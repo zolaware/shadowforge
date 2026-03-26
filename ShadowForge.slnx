@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/ShadowForge.Core/ShadowForge.Core.csproj" />
+  <Project Path="src/ShadowForge.Cli/ShadowForge.Cli.csproj" />
+  <Project Path="tests/ShadowForge.Tests/ShadowForge.Tests.csproj" />
+</Solution>

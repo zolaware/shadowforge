@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ShadowForge.Cli</RootNamespace>
+    <AssemblyName>sforge</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ShadowForge.Core\ShadowForge.Core.csproj" />
+    <PackageReference Include="System.CommandLine" Version="2.0.0" />
+  </ItemGroup>
+</Project>
