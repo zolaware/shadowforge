@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RPJ = ShadowForge.Formats.RPJ;
 using BDS = ShadowForge.Formats.BDS;
+using BDSL = ShadowForge.Formats.BDSL;
 
 namespace ShadowForge.Cli.Commands;
 
@@ -21,17 +22,26 @@ public static class RpjCommands
     private static Command BuildDecompileCommand()
     {
         var fileArg = new Argument<FileInfo>("file") { Description = "RPJ file to decompile" };
-        var outputOpt = new Option<FileInfo?>("-o") { Description = "Output BDS file path" };
-        var cmd = new Command("decompile", "Decompile RPJ binary to BDS text");
+        var outputOpt = new Option<FileInfo?>("-o") { Description = "Output file path" };
+        var formatOpt = new Option<string>("--format") { Description = "Output format: bdsl (default) or bds", DefaultValueFactory = _ => "bdsl" };
+        var cmd = new Command("decompile", "Decompile RPJ binary to text");
         cmd.Arguments.Add(fileArg);
         cmd.Options.Add(outputOpt);
+        cmd.Options.Add(formatOpt);
         cmd.SetAction(parseResult =>
         {
             var file = parseResult.GetValue(fileArg)!;
-            var output = parseResult.GetValue(outputOpt) ?? new FileInfo(Path.ChangeExtension(file.FullName, ".bds"));
+            var format = parseResult.GetValue(formatOpt) ?? "bdsl";
+            string ext = format == "bds" ? ".bds" : ".bdsl";
+            var output = parseResult.GetValue(outputOpt) ?? new FileInfo(Path.ChangeExtension(file.FullName, ext));
 
             var rpj = RPJ.Reader.Read(file.FullName);
-            BDS.Writer.Write(rpj, output.FullName);
+
+            if (format == "bds")
+                BDS.Writer.Write(rpj, output.FullName);
+            else
+                BDSL.Writer.Write(rpj, output.FullName);
+
             Console.WriteLine($"Written to {output.FullName}");
             Console.WriteLine($"  {rpj.Entries.Count} entries, {rpj.Scripts.Count} script blocks, {rpj.Waypoints.Count} waypoints");
         });
@@ -40,9 +50,9 @@ public static class RpjCommands
 
     private static Command BuildCompileCommand()
     {
-        var fileArg = new Argument<FileInfo>("file") { Description = "BDS file to compile" };
+        var fileArg = new Argument<FileInfo>("file") { Description = "BDSL or BDS file to compile" };
         var outputOpt = new Option<FileInfo?>("-o") { Description = "Output RPJ file path" };
-        var cmd = new Command("compile", "Compile BDS text to RPJ binary");
+        var cmd = new Command("compile", "Compile BDSL/BDS text to RPJ binary");
         cmd.Arguments.Add(fileArg);
         cmd.Options.Add(outputOpt);
         cmd.SetAction(parseResult =>
@@ -50,7 +60,12 @@ public static class RpjCommands
             var file = parseResult.GetValue(fileArg)!;
             var output = parseResult.GetValue(outputOpt) ?? new FileInfo(Path.ChangeExtension(file.FullName, ".rpj"));
 
-            var rpj = BDS.Parser.ParseFile(file.FullName);
+            RPJ.SceneFile rpj;
+            if (file.Extension.Equals(".bds", StringComparison.OrdinalIgnoreCase))
+                rpj = BDS.Parser.ParseFile(file.FullName);
+            else
+                rpj = BDSL.Parser.ParseFile(file.FullName);
+
             RPJ.Writer.Write(rpj, output.FullName);
             Console.WriteLine($"Written to {output.FullName}");
         });
@@ -113,13 +128,17 @@ public static class RpjCommands
     {
         var dirArg = new Argument<DirectoryInfo>("directory") { Description = "Directory containing RPJ files" };
         var outputOpt = new Option<DirectoryInfo?>("-o") { Description = "Output directory" };
+        var formatOpt = new Option<string>("--format") { Description = "Output format: bdsl (default) or bds", DefaultValueFactory = _ => "bdsl" };
         var cmd = new Command("batch-decompile", "Decompile all RPJ files in directory");
         cmd.Arguments.Add(dirArg);
         cmd.Options.Add(outputOpt);
+        cmd.Options.Add(formatOpt);
         cmd.SetAction(parseResult =>
         {
             var dir = parseResult.GetValue(dirArg)!;
             var outputDir = parseResult.GetValue(outputOpt) ?? dir;
+            var format = parseResult.GetValue(formatOpt) ?? "bdsl";
+            string ext = format == "bds" ? ".bds" : ".bdsl";
 
             var files = Directory.GetFiles(dir.FullName, "*.rpj", SearchOption.AllDirectories);
             int success = 0, fail = 0;
@@ -127,13 +146,16 @@ public static class RpjCommands
             foreach (var file in files)
             {
                 string rel = Path.GetRelativePath(dir.FullName, file);
-                string outPath = Path.Combine(outputDir.FullName, Path.ChangeExtension(rel, ".bds"));
+                string outPath = Path.Combine(outputDir.FullName, Path.ChangeExtension(rel, ext));
                 Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
 
                 try
                 {
                     var rpj = RPJ.Reader.Read(file);
-                    BDS.Writer.Write(rpj, outPath);
+                    if (format == "bds")
+                        BDS.Writer.Write(rpj, outPath);
+                    else
+                        BDSL.Writer.Write(rpj, outPath);
                     success++;
                 }
                 catch (Exception ex)
@@ -151,9 +173,9 @@ public static class RpjCommands
 
     private static Command BuildBatchCompileCommand()
     {
-        var dirArg = new Argument<DirectoryInfo>("directory") { Description = "Directory containing BDS files" };
+        var dirArg = new Argument<DirectoryInfo>("directory") { Description = "Directory containing BDSL or BDS files" };
         var outputOpt = new Option<DirectoryInfo?>("-o") { Description = "Output directory" };
-        var cmd = new Command("batch-compile", "Compile all BDS files in directory");
+        var cmd = new Command("batch-compile", "Compile all BDSL/BDS files in directory");
         cmd.Arguments.Add(dirArg);
         cmd.Options.Add(outputOpt);
         cmd.SetAction(parseResult =>
@@ -161,7 +183,9 @@ public static class RpjCommands
             var dir = parseResult.GetValue(dirArg)!;
             var outputDir = parseResult.GetValue(outputOpt) ?? dir;
 
-            var files = Directory.GetFiles(dir.FullName, "*.bds", SearchOption.AllDirectories);
+            var bdslFiles = Directory.GetFiles(dir.FullName, "*.bdsl", SearchOption.AllDirectories);
+            var bdsFiles = Directory.GetFiles(dir.FullName, "*.bds", SearchOption.AllDirectories);
+            var files = bdslFiles.Concat(bdsFiles).ToArray();
             int success = 0, fail = 0;
 
             foreach (var file in files)
@@ -172,7 +196,11 @@ public static class RpjCommands
 
                 try
                 {
-                    var rpj = BDS.Parser.ParseFile(file);
+                    RPJ.SceneFile rpj;
+                    if (Path.GetExtension(file).Equals(".bds", StringComparison.OrdinalIgnoreCase))
+                        rpj = BDS.Parser.ParseFile(file);
+                    else
+                        rpj = BDSL.Parser.ParseFile(file);
                     RPJ.Writer.Write(rpj, outPath);
                     success++;
                 }
@@ -193,13 +221,16 @@ public static class RpjCommands
     {
         var dirArg = new Argument<DirectoryInfo>("directory") { Description = "Directory containing RPJ files" };
         var strictOpt = new Option<bool>("--strict") { Description = "Ignore header string padding differences" };
+        var formatOpt = new Option<string>("--format") { Description = "Round-trip format: bdsl (default) or bds", DefaultValueFactory = _ => "bdsl" };
         var cmd = new Command("batch-verify", "Verify round-trip for all RPJ files");
         cmd.Arguments.Add(dirArg);
         cmd.Options.Add(strictOpt);
+        cmd.Options.Add(formatOpt);
         cmd.SetAction(parseResult =>
         {
             var dir = parseResult.GetValue(dirArg)!;
             bool strict = parseResult.GetValue(strictOpt);
+            var format = parseResult.GetValue(formatOpt) ?? "bdsl";
 
             var files = Directory.GetFiles(dir.FullName, "*.rpj", SearchOption.AllDirectories);
             int pass = 0, fail = 0;
@@ -212,9 +243,20 @@ public static class RpjCommands
                 {
                     var original = File.ReadAllBytes(file);
                     var rpj = RPJ.Reader.Read(file);
-                    var bdsText = BDS.Writer.Write(rpj);
-                    var rpjBack = BDS.Parser.Parse(bdsText);
-                    var compiled = RPJ.Writer.Write(rpjBack);
+
+                    byte[] compiled;
+                    if (format == "bds")
+                    {
+                        var bdsText = BDS.Writer.Write(rpj);
+                        var rpjBack = BDS.Parser.Parse(bdsText);
+                        compiled = RPJ.Writer.Write(rpjBack);
+                    }
+                    else
+                    {
+                        var bdslText = BDSL.Writer.Write(rpj);
+                        var rpjBack = BDSL.Parser.Parse(bdslText);
+                        compiled = RPJ.Writer.Write(rpjBack);
+                    }
 
                     if (compiled.Length != original.Length)
                     {
