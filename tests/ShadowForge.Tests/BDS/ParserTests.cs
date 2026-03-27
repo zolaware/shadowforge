@@ -107,7 +107,8 @@ public class ParserTests
         var rpj = Parser.Parse(bds);
 
         Assert.Single(rpj.Scripts);
-        Assert.Equal(0xFFFFFFFFu, rpj.Scripts[0].Header.Sentinel);
+        Assert.Equal(0xFFFFFFFFu, rpj.Scripts[0].Header.ChapterMin);
+        Assert.True(rpj.Scripts[0].Header.IsUnconditional);
     }
 
     [Fact]

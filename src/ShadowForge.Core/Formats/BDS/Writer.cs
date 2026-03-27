@@ -31,13 +31,8 @@ public static class Writer
                 WriteWaypoint(sb, wp);
         }
 
-        if (rpj.Gaps.Count > 0)
-        {
-            sb.AppendLine("# --- Raw data gaps ---");
-            sb.AppendLine();
-            foreach (var gap in rpj.Gaps)
-                WriteGap(sb, gap);
-        }
+        // Gaps are preserved internally for round-trip but not emitted to DSL.
+        // If gaps exist, the reader likely has a bug.
 
         return sb.ToString();
     }
@@ -92,10 +87,10 @@ public static class Writer
 
         sb.AppendLine($"entry \"{EscapeString(entry.EntryName)}\" id={entry.EntryId} type={entryTypeName} offset=0x{entry.FileOffset:X} {{");
 
-        // name_raw: only emit if it differs from the entry name zero-padded
+        // name_bytes: emit only if the 20-byte field contains data beyond the null-terminated name
         var nameRaw = entry.EntryNameRaw;
         if (!NameRawMatchesName(entry.EntryName, nameRaw))
-            sb.AppendLine($"    name_raw = {Convert.ToHexString(nameRaw)}");
+            sb.AppendLine($"    name_bytes = {Convert.ToHexString(nameRaw)}");
 
         // reserved: only emit if non-zero
         var reserved = entry.RawData[0x18..0x20];
@@ -150,20 +145,31 @@ public static class Writer
             sb.AppendLine($"    script file_offset=0x{script.FileOffset:X} size=0x{script.FileSize:X} {{");
 
             var hdr = script.Header;
-            // Emit decoded header fields instead of hex blob
-            sb.AppendLine($"        sentinel = 0x{hdr.Sentinel:X8}");
-            sb.AppendLine($"        bytecode_size = 0x{hdr.BytecodeSize:X}");
-            sb.AppendLine($"        param_size = 0x{hdr.ParamDataSize:X}");
-            sb.AppendLine($"        next_block = 0x{hdr.NextBlockOffset:X}");
 
-            // Emit unknown regions only if non-zero
-            var unknownMiddle = hdr.UnknownMiddle;
-            if (unknownMiddle != null)
-                sb.AppendLine($"        header_middle = {Convert.ToHexString(unknownMiddle)}");
+            // Chapter range
+            if (hdr.IsUnconditional)
+                sb.AppendLine("        chapter = all");
+            else
+                sb.AppendLine($"        chapter = {hdr.ChapterMin}..{hdr.ChapterMax}");
 
-            var unknownTail = hdr.UnknownTail;
-            if (unknownTail != null)
-                sb.AppendLine($"        header_tail = {Convert.ToHexString(unknownTail)}");
+            // Conditions — only emit non-empty slots
+            for (int c = 0; c < ScriptHeader.ConditionCount; c++)
+            {
+                var cond = hdr.GetCondition(c);
+                if (cond.IsEmpty) continue;
+                sb.AppendLine($"        condition {cond.TypeName} {cond.Operand} {cond.OpName} {cond.Value}");
+            }
+
+            // Sizes and chain
+            sb.AppendLine($"        bytecode_size = {hdr.BytecodeSize}");
+            sb.AppendLine($"        param_count = {hdr.ParamCount}");
+            if (hdr.NextBlockOffset != 0)
+                sb.AppendLine($"        next_block = 0x{hdr.NextBlockOffset:X}");
+
+            // Reserved region — only if non-zero (should never happen in practice)
+            var reserved = hdr.ReservedRegion;
+            if (reserved != null)
+                sb.AppendLine($"        header_reserved = {Convert.ToHexString(reserved)}");
 
             foreach (var elem in script.Elements)
             {

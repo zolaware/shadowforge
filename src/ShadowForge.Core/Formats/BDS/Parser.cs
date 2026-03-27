@@ -183,7 +183,8 @@ public static class Parser
     {
         switch (field)
         {
-            case "name_raw":
+            case "name_raw": // legacy
+            case "name_bytes":
                 var nameBytes = Convert.FromHexString(value);
                 Array.Copy(nameBytes, 0, entry.RawData, 0x04, Math.Min(nameBytes.Length, 20));
                 break;
@@ -223,6 +224,7 @@ public static class Parser
         int explicitFileOffset = -1, int explicitFileSize = -1)
     {
         var block = new ScriptBlock();
+        int conditionIndex = 0;
 
         while (i < lines.Length)
         {
@@ -240,26 +242,49 @@ public static class Parser
                     // Legacy format: header HEXBYTES (512 hex chars = 0x100 bytes)
                     block.HeaderData = Convert.FromHexString(parts.Length > 1 ? parts[1] : "");
                     break;
+                case "chapter":
+                    // chapter = all | min..max
+                    var chapterVal = parts.Length > 2 ? parts[2] : parts[1];
+                    if (chapterVal == "all")
+                    {
+                        BigEndian.WriteUInt32(block.HeaderData, 0x00, 0xFFFFFFFF);
+                    }
+                    else if (chapterVal.Contains(".."))
+                    {
+                        var range = chapterVal.Split("..");
+                        BigEndian.WriteUInt32(block.HeaderData, 0x00, ParseUInt(range[0]));
+                        BigEndian.WriteUInt32(block.HeaderData, 0x04, ParseUInt(range[1]));
+                    }
+                    break;
+                case "condition":
+                    // condition type operand op value
+                    ParseCondition(block, conditionIndex++, parts);
+                    break;
                 case "sentinel":
-                    // New format: decoded header fields
+                    // Legacy: sentinel = 0xFFFFFFFF
                     BigEndian.WriteUInt32(block.HeaderData, 0x00, ParseUInt(parts.Length > 2 ? parts[2] : parts[1]));
                     break;
                 case "bytecode_size":
                     BigEndian.WriteUInt32(block.HeaderData, 0xEC, ParseUInt(parts.Length > 2 ? parts[2] : parts[1]));
                     break;
-                case "param_size":
+                case "param_size": // legacy
+                case "param_count":
                     BigEndian.WriteUInt32(block.HeaderData, 0xF0, ParseUInt(parts.Length > 2 ? parts[2] : parts[1]));
                     break;
                 case "next_block":
                     BigEndian.WriteUInt32(block.HeaderData, 0xFC, ParseUInt(parts.Length > 2 ? parts[2] : parts[1]));
                     break;
-                case "header_middle":
+                case "header_middle": // legacy
                     var middleBytes = Convert.FromHexString(parts.Length > 2 ? parts[2] : parts[1]);
                     Array.Copy(middleBytes, 0, block.HeaderData, 0x04, Math.Min(middleBytes.Length, 0xE8));
                     break;
-                case "header_tail":
+                case "header_tail": // legacy
                     var tailBytes = Convert.FromHexString(parts.Length > 2 ? parts[2] : parts[1]);
                     Array.Copy(tailBytes, 0, block.HeaderData, 0xF4, Math.Min(tailBytes.Length, 0x08));
+                    break;
+                case "header_reserved":
+                    var resBytes2 = Convert.FromHexString(parts.Length > 2 ? parts[2] : parts[1]);
+                    Array.Copy(resBytes2, 0, block.HeaderData, 0x88, Math.Min(resBytes2.Length, 0x64));
                     break;
                 case "param_data":
                     block.ParamData = Convert.FromHexString(parts.Length > 1 ? parts[1] : "");
@@ -409,6 +434,31 @@ public static class Parser
             return BitConverter.ToSingle(bytes, 0);
         }
         return float.Parse(s, CultureInfo.InvariantCulture);
+    }
+
+    private static void ParseCondition(ScriptBlock block, int index, string[] parts)
+    {
+        // condition type operand op value
+        if (index >= ScriptHeader.ConditionCount || parts.Length < 5) return;
+        int offset = ScriptHeader.ConditionsOffset + index * ScriptHeader.ConditionSize;
+
+        uint type = parts[1] switch
+        {
+            "variable" => 2, "item_count" => 3, "party_check" => 4, "flag" => 5,
+            _ => ParseUInt(parts[1].StartsWith("unk_") ? parts[1][4..] : parts[1]),
+        };
+        uint operand = ParseUInt(parts[2]);
+        uint op = parts[3] switch
+        {
+            "==" => 0, ">=" => 1, "<=" => 2, ">" => 3, "<" => 4, "!=" => 5,
+            _ => ParseUInt(parts[3].StartsWith("op_") ? parts[3][3..] : parts[3]),
+        };
+        uint value = ParseUInt(parts[4]);
+
+        BigEndian.WriteUInt32(block.HeaderData, offset, type);
+        BigEndian.WriteUInt32(block.HeaderData, offset + 4, operand);
+        BigEndian.WriteUInt32(block.HeaderData, offset + 8, op);
+        BigEndian.WriteUInt32(block.HeaderData, offset + 12, value);
     }
 
     private static AreaType ParseAreaType(string s) => s.Trim() switch
