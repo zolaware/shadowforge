@@ -576,24 +576,34 @@ public static class Parser
         var bodyLine = StripComment(rawLine).Trim();
         if (string.IsNullOrEmpty(bodyLine)) return i + 1;
 
-        var parts = bodyLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) return i + 1;
-
-        string name = parts[0];
+        // Handle function-call syntax: name(args) or legacy space-separated: name args
+        string name;
+        string argsPart;
+        int parenIdx = bodyLine.IndexOf('(');
+        if (parenIdx > 0 && bodyLine.EndsWith(")"))
+        {
+            name = bodyLine[..parenIdx].Trim();
+            argsPart = bodyLine[(parenIdx + 1)..^1]; // strip parens
+        }
+        else
+        {
+            var parts = bodyLine.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            name = parts[0];
+            argsPart = parts.Length > 1 ? parts[1] : "";
+        }
 
         if (name == "raw")
         {
-            // raw HEX -> ScriptData
             block.Elements.Add(new ScriptData
             {
-                Bytes = parts.Length > 1 ? Convert.FromHexString(parts[1]) : Array.Empty<byte>(),
+                Bytes = !string.IsNullOrEmpty(argsPart) ? Convert.FromHexString(argsPart.Trim()) : Array.Empty<byte>(),
             });
             return i + 1;
         }
 
         if (name == "param_data")
         {
-            block.ParamData = parts.Length > 1 ? Convert.FromHexString(parts[1]) : Array.Empty<byte>();
+            block.ParamData = !string.IsNullOrEmpty(argsPart) ? Convert.FromHexString(argsPart.Trim()) : Array.Empty<byte>();
             return i + 1;
         }
 
@@ -601,18 +611,23 @@ public static class Parser
         if (!Opcodes.TryGetOpcode(name, out uint opcode))
             throw new FormatException($"Unknown opcode '{name}' at line {i + 1}");
 
-        // If alias opcode comment present, use that opcode instead
         if (aliasOpcode.HasValue)
             opcode = aliasOpcode.Value;
 
-        // Parse params: comma-separated or space-separated hex/decimal values
-        // Remaining tokens after name, strip any trailing commas
+        // Parse params: comma-separated, strip name= prefixes
         var paramTokens = new List<string>();
-        for (int p = 1; p < parts.Length; p++)
+        if (!string.IsNullOrEmpty(argsPart))
         {
-            var tok = parts[p].TrimEnd(',');
-            if (!string.IsNullOrEmpty(tok))
-                paramTokens.Add(tok);
+            foreach (var tok in argsPart.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var trimmed = tok.Trim();
+                // Strip "name=value" -> "value"
+                int eqIdx = trimmed.IndexOf('=');
+                if (eqIdx >= 0)
+                    trimmed = trimmed[(eqIdx + 1)..].Trim();
+                if (!string.IsNullOrEmpty(trimmed))
+                    paramTokens.Add(trimmed);
+            }
         }
 
         var rawParams = new uint[paramTokens.Count];

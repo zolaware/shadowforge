@@ -329,23 +329,41 @@ public static class Writer
 
     private static void WriteInstruction(StringBuilder sb, ScriptInstruction instr)
     {
-        // Trim trailing zero params
         var rawParams = instr.RawParams;
-        int trimLen = rawParams.Length;
-        while (trimLen > 0 && rawParams[trimLen - 1] == 0)
-            trimLen--;
-
         bool isAlias = Opcodes.IsAlias(instr.Opcode);
         string name = isAlias ? Opcodes.GetAliasName(instr.Opcode) : Opcodes.GetName(instr.Opcode);
-
-        if (trimLen > 0)
+        uint canonical = isAlias ? instr.Opcode : instr.Opcode; // for param lookup
+        // Aliases share param names with their canonical opcode
+        uint lookupOp = instr.Opcode;
+        if (Opcodes.IsAlias(instr.Opcode))
         {
-            var paramStr = string.Join(", ", rawParams[..trimLen].Select(p => $"0x{p:X}"));
-            sb.Append($"        {name} {paramStr}");
+            // Map alias to canonical for param name lookup
+            lookupOp = instr.Opcode switch
+            {
+                5067 => 5001, 5068 => 5025, 5070 => 5031,
+                5096 => 5012, 5097 => 5003, _ => instr.Opcode,
+            };
+        }
+
+        string?[]? paramNames = null;
+        ParamNames.TryGetValue(lookupOp, out paramNames);
+
+        if (rawParams.Length > 0)
+        {
+            var parts = new List<string>();
+            for (int i = 0; i < rawParams.Length; i++)
+            {
+                string pName = (paramNames != null && i < paramNames.Length && paramNames[i] != null)
+                    ? paramNames[i]!
+                    : $"p{i}";
+                string val = $"0x{rawParams[i]:X}";
+                parts.Add($"{pName}={val}");
+            }
+            sb.Append($"        {name}({string.Join(", ", parts)})");
         }
         else
         {
-            sb.Append($"        {name}");
+            sb.Append($"        {name}()");
         }
 
         if (isAlias)
@@ -353,6 +371,45 @@ public static class Writer
 
         sb.AppendLine();
     }
+
+    // Parameter names per opcode, from wiki opcode-reference.md
+    private static readonly Dictionary<uint, string?[]> ParamNames = new()
+    {
+        [5000] = ["label_id"],
+        [5001] = ["message_id", null, "auto_advance", "delay_frames"],
+        [5003] = ["dest_var", "operator", "source_var", "value", "value_type"],
+        [5004] = ["item_id", "is_add", "quantity", "show_popup", null, "flags"],
+        [5006] = ["char_index", "anim_id", "action"],
+        [5010] = ["char_id", "action", "level_ref", null, "class_slot"],
+        [5012] = ["check_type", "sub_type", "operand", "compare_value", "compare_op", "true_action", "true_label", "false_action", "false_label"],
+        [5013] = ["label_id"],
+        [5016] = ["entry_id", null, "script_offset", "scene_id", "flags", null, null, "execute_mode", "target_label"],
+        [5017] = ["stop_flag", "bgm_id", "play_mode"],
+        [5018] = ["play_flags", "loop_count", null, "pos_x", "pos_y", "pos_z"],
+        [5020] = ["wait_type", "frame_count"],
+        [5021] = ["area_type", "stage_id", "flags", "pos_x", "pos_z", "pos_y", "angle", "entry_point", "transition_param", "npc_ref_id"],
+        [5024] = ["step_count"],
+        [5025] = ["has_dest", "destination"],
+        [5026] = ["fade_type", "duration_frames", "color", null, null, null, null, "alt_enable", "alt_target", "alt_flag"],
+        [5027] = ["target_type", "action_id", "flags", "npc_id"],
+        [5028] = ["target_type", "move_type", "pos_x", "pos_y", "pos_z", "rotation", "move_param", "npc_id", "move_flags", "callback_var"],
+        [5031] = ["message_id", "param1", "param2", "param3", "play_transition", "area_flags"],
+        [5035] = ["char_id", "direction"],
+        [5036] = ["target_npc_id", "dismiss_flags"],
+        [5042] = ["check_type", "item_id", "add_amount", "overflow_label", "flags"],
+        [5043] = ["mode", "npc_id", "action", "sub_action"],
+        [5044] = ["mode"],
+        [5048] = ["layer_id"],
+        [5055] = ["char_id", "loop_count"],
+        [5059] = ["target_type", "npc_id", "effect_id"],
+        [5060] = ["target_type", "npc_id", null, "effect_hash"],
+        [5062] = ["mode", null, "transition_frames", "eye_x", "eye_y", "eye_z", "target_x", "target_y", "target_z", "yaw_angle"],
+        [5063] = ["flag_index", "direction", "value_or_dest"],
+        [5072] = ["target_mode", "char_id", "ability_bitmask"],
+        [5079] = ["apply_to_specific", "char_id", "target_type", "target_id", "target_x", "target_y", "target_z"],
+        [5083] = ["facing_angle", "flags"],
+        [5084] = ["quest_id"],
+    };
 
     // -------------------------------------------------------------------------
     // Waypoints
