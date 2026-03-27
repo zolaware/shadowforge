@@ -17,6 +17,9 @@ public static class BigEndian
     public static uint ReadUInt32(byte[] data, int offset)
         => BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset, 4));
 
+    public static short ReadInt16(byte[] data, int offset)
+        => BinaryPrimitives.ReadInt16BigEndian(data.AsSpan(offset, 2));
+
     public static int ReadInt32(byte[] data, int offset)
         => BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(offset, 4));
 

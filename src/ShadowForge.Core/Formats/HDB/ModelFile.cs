@@ -95,6 +95,7 @@ public class VertexArray
     public uint VaType { get; set; }
     public int VaOffset { get; set; }
     public int VaSize { get; set; }
+    public int VertexCount { get; set; }
     public byte[] RawVertices { get; set; } = Array.Empty<byte>();
 }
 

@@ -208,9 +208,9 @@ public static class Reader
         {
             var va = new VertexArray
             {
-                VaOffset = (int)BigEndian.ReadUInt32(data, cur),
-                VaSize = (int)BigEndian.ReadUInt32(data, cur + 4),
-                VaType = BigEndian.ReadUInt32(data, cur + 8),
+                VertexCount = (int)BigEndian.ReadUInt32(data, cur),
+                VaType = BigEndian.ReadUInt32(data, cur + 4),
+                VaOffset = (int)BigEndian.ReadUInt32(data, cur + 8),
             };
             model.VertexArrays.Insert(0, va); // reverse order per Python parser
             cur += 12;
@@ -249,14 +249,32 @@ public static class Reader
 
     private static void ReadVertexArrayData(ModelFile model, byte[] data, int vaStart)
     {
+        // Read VA data sequentially from the data region. Each VA has a 16-byte
+        // header [byte_size:u32, format_type:u32, vertex_count:u32, zero:u32]
+        // followed by byte_size bytes of vertex data.
+        int pos = vaStart;
         foreach (var va in model.VertexArrays)
         {
-            int offset = vaStart + va.VaOffset;
-            int size = va.VaSize;
-            if (offset + size > data.Length) size = data.Length - offset;
-            if (size <= 0) continue;
-            va.RawVertices = new byte[size];
-            Array.Copy(data, offset, va.RawVertices, 0, size);
+            if (pos + 16 > data.Length) break;
+
+            int byteSize = (int)BigEndian.ReadUInt32(data, pos);
+            uint formatType = BigEndian.ReadUInt32(data, pos + 4);
+            int vertexCount = (int)BigEndian.ReadUInt32(data, pos + 8);
+
+            va.VaType = formatType;
+            va.VertexCount = vertexCount;
+            va.VaSize = byteSize;
+            va.VaOffset = pos - vaStart;
+
+            int vertexDataStart = pos + 16;
+            int available = Math.Min(byteSize, data.Length - vertexDataStart);
+            if (available > 0)
+            {
+                va.RawVertices = new byte[available];
+                Array.Copy(data, vertexDataStart, va.RawVertices, 0, available);
+            }
+
+            pos = vertexDataStart + byteSize;
         }
     }
 

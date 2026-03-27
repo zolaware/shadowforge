@@ -5,4 +5,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ShadowForge</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpGLTF.Toolkit" Version="1.*" />
+  </ItemGroup>
 </Project>
