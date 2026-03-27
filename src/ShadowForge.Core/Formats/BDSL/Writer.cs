@@ -76,9 +76,7 @@ public static class Writer
 
         sb.AppendLine();
 
-        // name_bytes: only emit when raw bytes differ from standard null-padded encoding
-        if (!NameRawMatchesName(entry.EntryName, entry.EntryNameRaw))
-            sb.AppendLine($"    @name_bytes {Convert.ToHexString(entry.EntryNameRaw)}");
+        // name_bytes: dropped - the parser writes the name and zero-pads the rest
 
         // +0x18..+0x1F - reserved region between name and ref_id (8 bytes)
         var reserved = entry.RawData[0x18..0x20];
@@ -149,6 +147,13 @@ public static class Writer
     private static void WriteScriptBlock(StringBuilder sb, ScriptBlock script)
     {
         var hdr = script.Header;
+
+        // Skip empty blocks (no metadata, no instructions, no param data)
+        bool hasMetadata = hdr.HasAnyMetadata || !hdr.UnknownRegionsAreZero;
+        bool hasContent = script.Elements.Count > 0 || script.ParamData.Length > 0;
+        if (!hasMetadata && !hasContent)
+            return;
+
         sb.AppendLine();
 
         // Build the when line
