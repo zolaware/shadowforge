@@ -1,4 +1,13 @@
-// P:\shadowforge\src\ShadowForge.Core\Formats\RPJ\Reader.cs
+/**
+ * @file        Formats/RPJ/Reader.cs
+ * @brief       RPJ binary reader - parses scene files into SceneFile model
+ *
+ * @copyright   Copyright (c) 2026 Tom Clay <tomc@tctechstuff.com>
+ *              All rights reserved.
+ *
+ * @license     BSD 3-Clause License
+ *              See LICENSE file in the project root for full license text.
+ */
 using ShadowForge.IO;
 using ShadowForge.Text;
 
