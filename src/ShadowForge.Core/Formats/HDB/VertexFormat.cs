@@ -20,7 +20,7 @@ public enum VertexSemantic
     TexCoord0,            // bit 17: 8 bytes
     TexCoord1,            // bit 18: 4 bytes
     TexCoord2,            // bit 19: 8 bytes
-    TexCoord4,            // bit 20: 4 bytes
+    TexCoord4,            // bit 20: 4 bytes (no TexCoord3 in this format)
     TangentBasis,         // bit 21: 4 bytes
     Influence2PosWeight,  // bit 22: 16 bytes
     Influence2NormIndex,  // bit 23: 8 bytes
@@ -74,10 +74,15 @@ public static class VertexFormat
 
     public static List<VertexComponent> GetComponents(uint vaType)
     {
+        int baseBits = (int)(vaType & 0xFFF);
         var result = new List<VertexComponent>();
+
         foreach (var comp in ComponentTable)
         {
-            if ((vaType & (1u << comp.BitIndex)) != 0)
+            bool isSet = (vaType & (1u << comp.BitIndex)) != 0;
+            bool isImplicitBase = baseBits == 0 && comp.BitIndex <= 14;
+
+            if (isSet || isImplicitBase)
                 result.Add(comp);
         }
         return result;

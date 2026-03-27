@@ -30,10 +30,19 @@ public class VertexFormatTests
     }
 
     [Fact]
-    public void Components_MultiInfluence_Has_Position_And_UV()
+    public void Components_MultiInfluence_Has_Expected_Semantics()
     {
         var components = VertexFormat.GetComponents(0x13F00000);
+        Assert.Contains(components, c => c.Semantic == VertexSemantic.Position);
         Assert.Contains(components, c => c.Semantic == VertexSemantic.TexCoord4);
         Assert.Contains(components, c => c.Semantic == VertexSemantic.Influence2PosWeight);
+    }
+
+    [Fact]
+    public void Components_DirectStride_Returns_Empty()
+    {
+        // When low 12 bits encode stride directly, no component flags are set
+        var components = VertexFormat.GetComponents(0x00000030);
+        Assert.Empty(components);
     }
 }
