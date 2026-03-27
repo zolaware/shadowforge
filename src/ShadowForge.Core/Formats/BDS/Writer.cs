@@ -81,7 +81,7 @@ public static class Writer
         string entryTypeName = entry.EntryType switch
         {
             0 => "spawn", 1 => "npc", 2 => "zone", 3 => "enemy",
-            4 => "link", 5 => "entity", 6 => "event",
+            4 => "link", 5 => "entity", 6 => "warp",
             _ => entry.EntryType.ToString(),
         };
 

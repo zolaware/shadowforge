@@ -474,7 +474,7 @@ public static class Parser
     private static uint ParseEntryType(string s) => s.Trim() switch
     {
         "spawn" => 0, "npc" => 1, "zone" => 2, "enemy" => 3,
-        "link" => 4, "entity" => 5, "event" => 6,
+        "link" => 4, "entity" => 5, "warp" => 6, "event" => 6,
         _ => ParseUInt(s),
     };
 
