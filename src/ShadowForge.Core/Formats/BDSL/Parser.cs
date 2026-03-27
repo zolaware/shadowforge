@@ -35,6 +35,7 @@ public static class Parser
                 i++;
         }
 
+        ComputeLayout(rpj);
         return rpj;
     }
 
@@ -913,4 +914,115 @@ public static class Parser
         "warp" => 6,
         _ => ParseUInt(s),
     };
+
+    // -----------------------------------------------------------------
+    // Layout computation - assigns file offsets, sizes, section table
+    // -----------------------------------------------------------------
+
+    private static void ComputeLayout(SceneFile rpj)
+    {
+        const int HeaderSize = 0x270;
+        const int SectionTableSize = 0x48;
+        const int DataBase = HeaderSize + SectionTableSize; // 0x2B8
+        const int EntrySize = 0x70;
+
+        var st = rpj.Sections;
+        st.DataBaseOffset = DataBase;
+
+        // Entry pool: contiguous entries starting at DataBase
+        int entryPoolSize = rpj.Entries.Count * EntrySize;
+        for (int e = 0; e < rpj.Entries.Count; e++)
+        {
+            var entry = rpj.Entries[e];
+            entry.FileOffset = DataBase + e * EntrySize;
+
+            // Chain linked list: next_entry is relative to DataBase
+            uint nextOffset = (e < rpj.Entries.Count - 1) ? (uint)((e + 1) * EntrySize) : 0;
+            entry.WriteBE(0x6C, nextOffset);
+        }
+
+        st.Section1Offset = (uint)entryPoolSize;
+        st.EntryCount = (uint)rpj.Entries.Count;
+
+        // Script section: starts after entry pool
+        int scriptBase = DataBase + entryPoolSize;
+        int scriptPos = 0; // relative to scriptBase
+        uint totalCmds = 0;
+
+        for (int e = 0; e < rpj.Entries.Count; e++)
+        {
+            var entry = rpj.Entries[e];
+            var blocks = entry.ScriptBlocks;
+
+            if (blocks.Count == 0)
+            {
+                entry.WriteBE(0x64, 0); // script_block_count
+                entry.WriteBE(0x68, 0); // script_block_offset
+                continue;
+            }
+
+            entry.WriteBE(0x64, (uint)blocks.Count);
+            entry.WriteBE(0x68, (uint)scriptPos); // relative to scriptBase
+
+            for (int b = 0; b < blocks.Count; b++)
+            {
+                var block = blocks[b];
+                block.FileOffset = scriptBase + scriptPos;
+                block.OwnerEntryIndex = e;
+
+                // Compute bytecode size
+                int bytecodeSize = 0;
+                foreach (var elem in block.Elements)
+                {
+                    if (elem is ScriptInstruction instr)
+                    {
+                        bytecodeSize += (int)instr.Size;
+                        totalCmds++;
+                    }
+                    else if (elem is ScriptData data)
+                        bytecodeSize += data.Bytes.Length;
+                }
+
+                int paramSize = block.ParamData.Length;
+                int blockTotalSize = 0x100 + bytecodeSize + paramSize;
+                block.FileSize = blockTotalSize;
+
+                // Write sizes into header data
+                BigEndian.WriteUInt32(block.HeaderData, 0xEC, (uint)bytecodeSize);
+                BigEndian.WriteUInt32(block.HeaderData, 0xF0, (uint)paramSize);
+
+                // Chain: next_block is relative to scriptBase
+                if (b < blocks.Count - 1)
+                {
+                    uint nextBlockRel = (uint)(scriptPos + blockTotalSize);
+                    BigEndian.WriteUInt32(block.HeaderData, 0xFC, nextBlockRel);
+                }
+                else
+                {
+                    BigEndian.WriteUInt32(block.HeaderData, 0xFC, 0);
+                }
+
+                scriptPos += blockTotalSize;
+            }
+        }
+
+        int scriptSectionSize = scriptPos;
+        st.Section2Offset = (uint)scriptSectionSize;
+        st.TotalScriptCmds = totalCmds;
+
+        // Waypoint section: starts after scripts
+        int waypointStart = scriptBase + scriptSectionSize;
+        st.Section4Offset = (uint)waypointStart;
+
+        for (int w = 0; w < rpj.Waypoints.Count; w++)
+        {
+            rpj.Waypoints[w].FileOffset = waypointStart + w * 0x40;
+        }
+
+        int totalSize = waypointStart + rpj.Waypoints.Count * 0x40;
+        rpj.OriginalFileSize = totalSize;
+
+        // Section3 (build tool metadata, not used at runtime)
+        st.Section3Offset = 0;
+    }
 }
