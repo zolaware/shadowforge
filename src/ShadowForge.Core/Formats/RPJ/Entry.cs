@@ -31,6 +31,18 @@ public class Entry
     public uint EntryTargetRef0 => BigEndian.ReadUInt32(RawData, 0x38);
     public uint EntryTargetRef1 => BigEndian.ReadUInt32(RawData, 0x3C);
     public uint EntryTargetRef2 => BigEndian.ReadUInt32(RawData, 0x40);
+
+    // Semantic name: +0x34 is facing angle, not radius
+    public float EntryFacing => BigEndian.ReadFloat(RawData, 0x34);
+
+    // Type 1 (npc): trigger box half-extents as floats
+    public float ExtentX => BigEndian.ReadFloat(RawData, 0x38);
+    public float ExtentY => BigEndian.ReadFloat(RawData, 0x3C);
+    public float ExtentZ => BigEndian.ReadFloat(RawData, 0x40);
+
+    // +0x44: type-dependent (npc yaw, enemy aggro radius, warp rotation)
+    public float EntryField44 => BigEndian.ReadFloat(RawData, 0x44);
+
     public uint EntryScriptBlockCount => BigEndian.ReadUInt32(RawData, 0x64);
     public uint EntryScriptBlockOffset => BigEndian.ReadUInt32(RawData, 0x68);
     public uint EntryNextOffset => BigEndian.ReadUInt32(RawData, 0x6C);
