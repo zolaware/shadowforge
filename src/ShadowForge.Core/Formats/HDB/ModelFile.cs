@@ -33,7 +33,7 @@ public class ModelFile
 /// <summary>32-byte file header beginning with the BDH@ magic.</summary>
 public class FileHeader
 {
-    public const uint Magic = 0x40484442; // "BDH@"
+    public const uint Magic = 0x42444840; // "BDH@"
     public const int MinSize = 24;
 
     public byte[] RawData { get; set; } = new byte[32];
