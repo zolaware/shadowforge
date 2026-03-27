@@ -6,15 +6,31 @@ namespace ShadowForge.Formats.RPJ;
 /// Decoded view of the 0x100-byte script block header.
 ///
 /// Layout (IDA-verified from sub_821AD868):
-///   +0x00  u32   chapter_min     (-1 = unconditional, else chapter range start)
-///   +0x04  u32   chapter_max     (chapter range end, inclusive)
-///   +0x08  Condition[8]          8 condition slots, 16 bytes each
-///   +0x88  u32[25]               reserved / unused (always zero in files)
+///   +0x00  u32   chapter_min       (-1 = unconditional, else chapter range start)
+///   +0x04  u32   chapter_max       (chapter range end, inclusive)
+///   +0x08  Condition[8]            8 condition slots, 16 bytes each
+///   +0x88  u32[2]                  unknown / always zero (genuinely reserved)
+///   +0x90  u32   auto_run_flags
+///   +0x94  u32   encounter_mode
+///   +0x98  f32   encounter_range
+///   +0x9C  u32   auto_set_var_flag
+///   +0xA0  u32   auto_set_var_index
+///   +0xA4  u32[8]                  unknown / always zero (genuinely reserved)
+///   +0xC4  u32   linked_entry_id
+///   +0xC8  u32   spawn_config
+///   +0xCC  f32   spawn_angle
+///   +0xD0  f32   spawn_scale
+///   +0xD4  u32   render_flags
+///   +0xD8  i32   behavior_mode
+///   +0xDC  f32   interaction_radius
+///   +0xE0  u32   block_type
+///   +0xE4  u32   type_data
+///   +0xE8  u32   spawn_mode
 ///   +0xEC  u32   bytecode_size
-///   +0xF0  u32   param_count     (param data size in bytes, runtime divides by 4)
+///   +0xF0  u32   param_count       (param data size in bytes, runtime divides by 4)
 ///   +0xF4  u32   reserved
-///   +0xF8  u32   param_ptr       (relocated at runtime to point at param data)
-///   +0xFC  u32   next_block      (relative offset to next block, 0 = end of chain)
+///   +0xF8  u32   param_ptr         (relocated at runtime to point at param data)
+///   +0xFC  u32   next_block        (relative offset to next block, 0 = end of chain)
 ///
 /// Each Condition (16 bytes):
 ///   +0x00  u32   type     (0=none, 2=variable, 3=item_count, 4=party_check, 5=flag)
@@ -36,13 +52,41 @@ public readonly struct ScriptHeader
         _data = headerData;
     }
 
-    public uint ChapterMin => BigEndian.ReadUInt32(_data, 0x00);
-    public uint ChapterMax => BigEndian.ReadUInt32(_data, 0x04);
+    private uint SafeRead(int offset)
+        => _data.Length >= offset + 4 ? BigEndian.ReadUInt32(_data, offset) : 0;
+
+    private float SafeReadFloat(int offset)
+        => _data.Length >= offset + 4 ? BigEndian.ReadFloat(_data, offset) : 0f;
+
+    private int SafeReadInt(int offset)
+        => _data.Length >= offset + 4 ? BigEndian.ReadInt32(_data, offset) : 0;
+
+    public uint ChapterMin => SafeRead(0x00);
+    public uint ChapterMax => SafeRead(0x04);
     public bool IsUnconditional => ChapterMin == 0xFFFFFFFF;
 
-    public uint BytecodeSize => _data.Length >= 0xF0 ? BigEndian.ReadUInt32(_data, 0xEC) : 0;
-    public uint ParamCount => _data.Length >= 0xF4 ? BigEndian.ReadUInt32(_data, 0xF0) : 0;
-    public uint NextBlockOffset => _data.Length >= 0x100 ? BigEndian.ReadUInt32(_data, 0xFC) : 0;
+    public uint BytecodeSize => SafeRead(0xEC);
+    public uint ParamCount => SafeRead(0xF0);
+    public uint NextBlockOffset => SafeRead(0xFC);
+
+    // Semantic fields at +0x90 through +0xEB
+    public uint AutoRunFlags => SafeRead(0x90);
+    public uint EncounterMode => SafeRead(0x94);
+    public float EncounterRange => SafeReadFloat(0x98);
+    public uint AutoSetVarFlag => SafeRead(0x9C);
+    public uint AutoSetVarIndex => SafeRead(0xA0);
+    public uint LinkedEntryId => SafeRead(0xC4);
+    public uint SpawnConfig => SafeRead(0xC8);
+    public float SpawnAngle => SafeReadFloat(0xCC);
+    public float SpawnScale => SafeReadFloat(0xD0);
+    public uint RenderFlags => SafeRead(0xD4);
+    public int BehaviorMode => SafeReadInt(0xD8);
+    public float InteractionRadius => SafeReadFloat(0xDC);
+    public uint BlockType => SafeRead(0xE0);
+    public uint TypeData => SafeRead(0xE4);
+    public uint SpawnMode => SafeRead(0xE8);
+
+    public byte[] RawBytes => _data;
 
     public Condition GetCondition(int index)
     {
@@ -63,6 +107,32 @@ public readonly struct ScriptHeader
             for (int i = 0; i < ConditionCount; i++)
                 if (GetCondition(i).Type != 0) return false;
             return true;
+        }
+    }
+
+    /// <summary>True if the genuinely unknown regions (+0x88..+0x8F and +0xA4..+0xC3) are all zero.</summary>
+    public bool UnknownRegionsAreZero
+    {
+        get
+        {
+            if (_data.Length < 0xEC) return true;
+            for (int i = 0x88; i < 0x90; i++)
+                if (_data[i] != 0) return false;
+            for (int i = 0xA4; i < 0xC4; i++)
+                if (_data[i] != 0) return false;
+            return true;
+        }
+    }
+
+    /// <summary>True if any byte in the semantic metadata region +0x90..+0xEB is non-zero.</summary>
+    public bool HasAnyMetadata
+    {
+        get
+        {
+            if (_data.Length < 0xEC) return false;
+            for (int i = 0x90; i < 0xEC; i++)
+                if (_data[i] != 0) return true;
+            return false;
         }
     }
 
