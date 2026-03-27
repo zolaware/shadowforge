@@ -58,6 +58,14 @@ public static class Reader
             if (stEnd < data.Length)
                 model.SecondTable.Padding = (int)BigEndian.ReadUInt32(data, stEnd);
 
+            // Preserve raw data region (everything after second table padding to EOF)
+            int dataRegionStart = stEnd + 4;
+            if (dataRegionStart < data.Length)
+            {
+                model.DataRegion = new byte[data.Length - dataRegionStart];
+                Array.Copy(data, dataRegionStart, model.DataRegion, 0, model.DataRegion.Length);
+            }
+
             // IA and VA regions
             if (model.SecondTable.Entries.Length > 0)
             {
@@ -90,6 +98,11 @@ public static class Reader
         {
             int entryPos = entryBase + i * FirstTableEntrySize;
             if (entryPos + FirstTableEntrySize > data.Length) break;
+
+            // Preserve raw 16-byte entry for byte-identical round-trip
+            var rawEntry = new byte[FirstTableEntrySize];
+            Array.Copy(data, entryPos, rawEntry, 0, FirstTableEntrySize);
+            model.FirstTableEntries.Add(rawEntry);
 
             int entryType = (int)BigEndian.ReadUInt32(data, entryPos);
             // skip zero at +4

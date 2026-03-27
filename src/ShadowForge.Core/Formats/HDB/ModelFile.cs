@@ -28,6 +28,12 @@ public class ModelFile
     public SecondTableData SecondTable { get; set; } = new();
     public List<RawFirstTableEntry> RawEntries { get; set; } = new();
     public int OriginalFileSize { get; set; }
+
+    /// <summary>Raw 16-byte first table entries in original file order, for byte-identical round-trip.</summary>
+    public List<byte[]> FirstTableEntries { get; set; } = new();
+
+    /// <summary>Raw bytes from after the second table padding to end of file (entry data + IA + VA).</summary>
+    public byte[] DataRegion { get; set; } = Array.Empty<byte>();
 }
 
 /// <summary>32-byte file header beginning with the BDH@ magic.</summary>
