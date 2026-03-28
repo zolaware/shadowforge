@@ -33,21 +33,26 @@ public static class Reader
         Array.Copy(data, model.Header.RawData, Math.Min(data.Length, HeaderSize));
         if (model.Header.MagicValue != FileHeader.Magic)
             throw new InvalidDataException($"Invalid HDB magic: 0x{model.Header.MagicValue:X8}");
-
+        Logger.Debug($"Header processed");
         // First table
         int ftStart = HeaderSize;
         int ftCount = (int)BigEndian.ReadUInt32(data, ftStart);
         int ftLength = (int)BigEndian.ReadUInt32(data, ftStart + 4);
         int ftEnd = ftStart + ftLength + 4;
-
+        Logger.Debug($"First Table Header processed");
+        Logger.Debug($"Processing First Table Entries...");
         ParseFirstTableEntries(model, data, ftStart, ftCount);
+        Logger.Debug($"First Table Entries processed");
 
+        Logger.Debug($"Processing Second Table Entries...");
         // Second table
         int stStart = ftEnd;
         if (stStart + 8 <= data.Length)
         {
             model.SecondTable.EntryCount = (int)BigEndian.ReadUInt32(data, stStart);
             model.SecondTable.TableLength = (int)BigEndian.ReadUInt32(data, stStart + 4);
+            Logger.Debug($"SeconD Table Entries count: {model.SecondTable.EntryCount}");
+            Logger.Debug($"SeconD Table Entries length: {model.SecondTable.TableLength}");
 
             int entryStart = stStart + 8;
             model.SecondTable.Entries = new int[model.SecondTable.EntryCount];
@@ -71,15 +76,17 @@ public static class Reader
             {
                 int lastEntry = model.SecondTable.Entries[^1];
                 int iaStart = stEnd - 4 + lastEntry + 16;
+                Logger.Debug($"-- Second Table End: {stEnd}");
                 iaStart = (iaStart + 15) & ~15; // 16-byte align
+                Logger.Debug($"-- IA Start: {iaStart}");
 
-                ReadIndexArrayData(model, data, iaStart);
+                // Traverse the IA data and return the dynamically calculated true VA start
+                int trueVaStart = ReadIndexArrayData(model, data, iaStart);
 
-                int vaStartOffset = stEnd + lastEntry + 12;
-                if (vaStartOffset + 4 <= data.Length)
+                if (trueVaStart <= data.Length)
                 {
-                    int vaStart = iaStart + 16 + BigEndian.ReadInt32(data, vaStartOffset);
-                    ReadVertexArrayData(model, data, vaStart);
+                    Logger.Debug($"-- VA Start: {trueVaStart}");
+                    ReadVertexArrayData(model, data, trueVaStart);
                 }
             }
         }
@@ -98,7 +105,11 @@ public static class Reader
 
     private static void ParseFirstTableEntries(ModelFile model, byte[] data, int ftStart, int ftCount)
     {
+        Logger.Debug($"First Table Entries Reading Start");
+
         int entryBase = ftStart + 8; // skip count + length
+        bool needsBoneInjection = false; // Tracks if a bone needs to be injected into an empty palette
+
         for (int i = 0; i < ftCount; i++)
         {
             int entryPos = entryBase + i * FirstTableEntrySize;
@@ -122,6 +133,23 @@ public static class Reader
             {
                 case 7: // Bone
                     ParseBone(model, data, absPos, dataLength);
+
+                    // --- Empty Matrix Palette Bone Injection ---
+                    if (needsBoneInjection)
+                    {
+                        ushort boneIdx = (ushort)model.Bones[^1].Index;
+
+                        // Replicate Python's pointer reference behavior:
+                        // Find all empty palettes first, then append to them. 
+                        // If there are duplicate references, it appends multiple times (e.g. [79, 79])
+                        var emptyPalettes = model.MatrixPalettes.Where(p => p.Count == 0).ToList();
+                        foreach (var pal in emptyPalettes)
+                        {
+                            pal.Add(boneIdx);
+                        }
+
+                        needsBoneInjection = false;
+                    }
                     break;
                 case 10: // Texture names
                     ParseTextures(model, data, absPos, dataLength);
@@ -136,7 +164,60 @@ public static class Reader
                 case 3: // Render commands
                     var cmdData = new byte[dataLength];
                     Array.Copy(data, absPos, cmdData, 0, Math.Min(dataLength, data.Length - absPos));
-                    model.RenderCommands.AddRange(RenderCommandStream.Parse(cmdData));
+                    var parsedCommands = RenderCommandStream.Parse(cmdData);
+
+                    // Insert at 0 to prepend the chunk
+                    model.RenderCommands.InsertRange(0, parsedCommands);
+
+                    // --- Evaluate Matrix Palettes immediately to sync with Bone Injection ---
+                    var chunkMp = new List<List<ushort>>();
+                    var lastMp = new List<ushort>();
+                    bool vaCheck = false;
+                    bool mpCheck = false;
+
+                    foreach (var cmd in parsedCommands)
+                    {
+                        if (cmd.Opcode == 0x40) // VA Select
+                        {
+                            vaCheck = true;
+                            mpCheck = false;
+                        }
+                        else if (cmd.Opcode == 0x02) // Matrix Palette
+                        {
+                            var pal = new List<ushort>();
+                            if (cmd.Data != null && cmd.Data.Length >= 1)
+                            {
+                                int count = cmd.Data[0];
+                                for (int k = 0; k < count && 1 + k * 2 + 2 <= cmd.Data.Length; k++)
+                                    pal.Add(BigEndian.ReadUInt16(cmd.Data, 1 + k * 2));
+                            }
+                            chunkMp.Add(pal);
+                            lastMp = pal; // Passed by reference! Matches Python's pointer behavior.
+                            mpCheck = true;
+
+                            if (pal.Count == 0) needsBoneInjection = true;
+                        }
+                        else if (cmd.Opcode == 0x10 || cmd.Opcode == 0x20 || cmd.Opcode == 0x30) // IA Select
+                        {
+                            // Python's duplication fallback
+                            if (vaCheck != mpCheck)
+                            {
+                                chunkMp.Add(lastMp); // Appends the reference to replicate Python
+
+                                // Ensure we trigger bone injection if the fallback palette is empty!
+                                if (lastMp.Count == 0)
+                                {
+                                    needsBoneInjection = true;
+                                }
+
+                                vaCheck = false;
+                                mpCheck = false;
+                            }
+                        }
+                    }
+
+                    // Prepend this chunk's evaluated palettes to the global list
+                    model.MatrixPalettes.InsertRange(0, chunkMp);
                     break;
                 case 4: // IA face count (informational)
                     break;
@@ -190,6 +271,7 @@ public static class Reader
             bone.ExtraEuler[j] = BigEndian.ReadFloat(data, pos + 80 + j * 4);
 
         model.Bones.Add(bone);
+        Logger.Debug($"---Bone created with Index: {bone.Index} - '{bone.Name}'");
     }
 
     /// <summary>
@@ -279,7 +361,7 @@ public static class Reader
                 }
             }
         }
-
+        Logger.Debug($"Armature: {string.Join(", ", armature.Select(a => "[" + string.Join(",", a) + "]"))}");
         // Derive a_parent: for each bone, find the FIRST armature row containing
         // it and set parent to the bone before it in that row.
         var aParent = new int[n];
@@ -306,6 +388,7 @@ public static class Reader
     private static void ParseTextures(ModelFile model, byte[] data, int pos, int dataLength)
     {
         int count = dataLength / TextureEntrySize;
+        Logger.Debug($"Texture count: {count}");
         for (int j = 0; j < count; j++)
         {
             int off = pos + j * TextureEntrySize;
@@ -313,6 +396,7 @@ public static class Reader
             Array.Copy(data, off, entry.RawData, 0, Math.Min(TextureEntrySize, data.Length - off));
             entry.Name = System.Text.Encoding.ASCII.GetString(data, off, 16).TrimEnd('\0');
             model.Textures.Add(entry);
+            Logger.Debug($"Texture Name - {entry.Name}");
         }
     }
 
@@ -320,6 +404,10 @@ public static class Reader
     {
         int numVas = (int)BigEndian.ReadUInt32(data, pos);
         int cur = pos + 4;
+        Logger.Debug($"Entry type 5 VA Setup Entry detected!");
+        Logger.Debug($"--- Num of VAs: {numVas}");
+
+        var chunkVas = new List<VertexArray>();
         for (int j = 0; j < numVas; j++)
         {
             var va = new VertexArray
@@ -328,44 +416,113 @@ public static class Reader
                 VaType = BigEndian.ReadUInt32(data, cur + 4),
                 VaOffset = (int)BigEndian.ReadUInt32(data, cur + 8),
             };
-            model.VertexArrays.Insert(0, va); // reverse order per Python parser
+            chunkVas.Add(va);
+            Logger.Debug($"--- VAs: {va.VertexCount}, {va.VaType}, {va.VaOffset}");
             cur += 12;
         }
+
+        // Reverse only the VA arrays within this chunk, then append to the global list
+        chunkVas.Reverse();
+        model.VertexArrays.AddRange(chunkVas);
     }
 
-    private static void ReadIndexArrayData(ModelFile model, byte[] data, int iaStart)
+    private static int ReadIndexArrayData(ModelFile model, byte[] data, int iaStart)
     {
-        // The IA data region starts with a 16-byte section header:
-        // [byte_size:u32, index_count:u32, zeros:u64]
-        // Skip past it to reach the actual index data.
-        int iaDataStart = iaStart + 16;
+        int pos = iaStart;
 
-        // IA data read is driven by render commands that specify size/start
-        foreach (var cmd in model.RenderCommands)
+        // Replicate Python's zero-checks for pointer adjustment
+        if (pos + 4 <= data.Length)
         {
-            if (cmd.Opcode != 0x10 && cmd.Opcode != 0x20 && cmd.Opcode != 0x30) continue;
-            if (cmd.Data.Length < 5) continue;
+            uint val1 = BigEndian.ReadUInt32(data, pos);
+            if (val1 == 0) pos += 16;
+            else if (pos + 8 <= data.Length && BigEndian.ReadUInt32(data, pos + 4) == 0) pos += 16;
+        }
 
-            int iaSize = 2 + BigEndian.ReadUInt16(cmd.Data, 1);
-            int iaStartOff = BigEndian.ReadUInt16(cmd.Data, 3);
+        // Determine how many IA chunks exist by recounting the Type 3 entries
+        var iaCounts = new List<int>();
+        int ftStart = HeaderSize;
+        int entryBase = ftStart + 8;
+        int ftCount = (int)BigEndian.ReadUInt32(data, ftStart);
 
-            var ia = new IndexArray
+        for (int i = 0; i < ftCount; i++)
+        {
+            int entryPos = entryBase + i * FirstTableEntrySize;
+            if (entryPos + FirstTableEntrySize > data.Length) break;
+
+            if (BigEndian.ReadUInt32(data, entryPos) == 3) // Type 3: Render Commands
             {
-                Size = iaSize,
-                Start = iaStartOff,
-                Type = cmd.Opcode,
-            };
+                int dataOffset = (int)BigEndian.ReadUInt32(data, entryPos + 8);
+                int dataLength = (int)BigEndian.ReadUInt32(data, entryPos + 12);
+                int absPos = entryPos + 8 + dataOffset;
 
-            int byteOff = iaDataStart + iaStartOff * 2;
-            ia.Indices = new ushort[iaSize];
-            for (int k = 0; k < iaSize && byteOff + 2 <= data.Length; k++)
+                var cmdData = new byte[dataLength];
+                Array.Copy(data, absPos, cmdData, 0, Math.Min(dataLength, data.Length - absPos));
+                var parsedCommands = RenderCommandStream.Parse(cmdData);
+
+                int count = 0;
+                foreach (var cmd in parsedCommands)
+                {
+                    if (cmd.Opcode == 0x10 || cmd.Opcode == 0x20 || cmd.Opcode == 0x30) count++;
+                }
+                iaCounts.Insert(0, count); // Prepend to match Python's Tot_IA_Sizes order
+            }
+        }
+
+        int cmdIndex = 0;
+        var iaCommands = model.RenderCommands.Where(c => c.Opcode == 0x10 || c.Opcode == 0x20 || c.Opcode == 0x30).ToList();
+
+        // Traverse the chunks
+        for (int w = 0; w < iaCounts.Count; w++)
+        {
+            if (pos + 16 > data.Length) break;
+
+            int iaCheck = (int)BigEndian.ReadUInt32(data, pos);
+            int blockBodyStart = pos + 16;
+            pos += 16;
+
+            int countForChunk = iaCounts[w];
+            for (int i = 0; i < countForChunk; i++)
             {
-                ia.Indices[k] = BigEndian.ReadUInt16(data, byteOff);
-                byteOff += 2;
+                if (cmdIndex >= iaCommands.Count) break;
+                var cmd = iaCommands[cmdIndex++];
+
+                int iaSize = 2 + BigEndian.ReadUInt16(cmd.Data, 1);
+                int iaStartOff = BigEndian.ReadUInt16(cmd.Data, 3);
+
+                var ia = new IndexArray
+                {
+                    Size = iaSize,
+                    Start = iaStartOff,
+                    Type = cmd.Opcode,
+                };
+
+                // Advance pointer to the start offset for this specific index array
+                int posCheck = (pos - blockBodyStart) / 2;
+                if (iaStartOff > posCheck)
+                {
+                    pos += 2 * (iaStartOff - posCheck);
+                }
+
+                ia.Indices = new ushort[iaSize];
+                for (int k = 0; k < iaSize && pos + 2 <= data.Length; k++)
+                {
+                    ia.Indices[k] = BigEndian.ReadUInt16(data, pos);
+                    pos += 2;
+                }
+
+                model.IndexArrays.Add(ia);
             }
 
-            model.IndexArrays.Add(ia);
+            // Skip any remaining padding bytes in this specific chunk
+            int sPosCheck = pos - blockBodyStart;
+            if (iaCheck > sPosCheck)
+            {
+                pos += (iaCheck - sPosCheck);
+            }
         }
+
+        // The final pointer position is the true start of the Vertex Arrays
+        return pos;
     }
 
     private static void ReadVertexArrayData(ModelFile model, byte[] data, int vaStart)
@@ -374,6 +531,7 @@ public static class Reader
         // header [byte_size:u32, format_type:u32, vertex_count:u32, zero:u32]
         // followed by byte_size bytes of vertex data.
         int pos = vaStart;
+        Logger.Debug($"VA region starting at file pointer {vaStart}");
         foreach (var va in model.VertexArrays)
         {
             if (pos + 16 > data.Length) break;
@@ -403,8 +561,11 @@ public static class Reader
     {
         int currentVa = -1;
         int currentMaterial = -1;
-        var currentPalette = new List<ushort>();
         int iaIndex = 0;
+        int mpIndex = 0; // Track sequential palette index
+
+        bool vaCheck = false;
+        bool mpCheck = false;
 
         foreach (var cmd in model.RenderCommands)
         {
@@ -413,22 +574,38 @@ public static class Reader
                 case 0x40: // VA Select
                     if (cmd.Data.Length >= 3)
                         currentVa = BigEndian.ReadUInt16(cmd.Data, 1);
+
+                    vaCheck = true;
+                    mpCheck = false;
                     break;
                 case 0x60: // Material Select
                     if (cmd.Data.Length >= 1)
                         currentMaterial = cmd.Data[0];
                     break;
                 case 0x02: // Matrix Palette
-                    currentPalette = new List<ushort>();
-                    if (cmd.Data.Length >= 1)
-                    {
-                        int count = cmd.Data[0];
-                        for (int i = 0; i < count && 1 + i * 2 + 2 <= cmd.Data.Length; i++)
-                            currentPalette.Add(BigEndian.ReadUInt16(cmd.Data, 1 + i * 2));
-                    }
-                    model.MatrixPalettes.Add(currentPalette);
+                    mpCheck = true;
+
+                    // Log the pre-calculated palette to match Python
+                    Logger.Debug($"% VA Num {mpIndex}");
+                    Logger.Debug($"Current Palette: [{string.Join(", ", model.MatrixPalettes[mpIndex])}]");
+                    mpIndex++;
                     break;
-                case 0x10: case 0x20: case 0x30: // IA Select
+
+                case 0x10:
+                case 0x20:
+                case 0x30: // IA Select
+                    if (vaCheck != mpCheck)
+                    {
+                        // Log the fallback to fix the missing VAs in the debug log
+                        Logger.Debug("Empty MP detected in IA Selection, defaulting to previous.");
+                        Logger.Debug($"% VA Num {mpIndex}");
+                        Logger.Debug($"Current Palette: [{string.Join(", ", model.MatrixPalettes[mpIndex])}]");
+                        mpIndex++;
+
+                        vaCheck = false;
+                        mpCheck = false;
+                    }
+
                     if (iaIndex < model.IndexArrays.Count)
                     {
                         model.IndexArrays[iaIndex].MaterialIndex = currentMaterial;
@@ -438,7 +615,8 @@ public static class Reader
                             IaIndex = iaIndex,
                             MaterialIndex = currentMaterial,
                             Topology = cmd.Opcode,
-                            BonePalette = new List<ushort>(currentPalette),
+                            // Use the pre-calculated palette from the main list
+                            BonePalette = new List<ushort>(model.MatrixPalettes[mpIndex - 1])
                         });
                         iaIndex++;
                     }
