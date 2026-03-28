@@ -121,6 +121,9 @@ public class BoneInfluence
 {
     public int PaletteIndex { get; set; }
     public float Weight { get; set; }
+    public float PosX { get; set; }
+    public float PosY { get; set; }
+    public float PosZ { get; set; }
 }
 
 /// <summary>Index array region referencing a range of primitive indices.</summary>

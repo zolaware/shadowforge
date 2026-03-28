@@ -52,10 +52,11 @@ public static class VertexDecoder
         var v = new Vertex();
 
         // Influence 1 position + weight (16 bytes at offset 0)
-        v.PosX = BigEndian.ReadFloat(data, off);
-        v.PosY = BigEndian.ReadFloat(data, off + 4);
-        v.PosZ = BigEndian.ReadFloat(data, off + 8);
+        float px1 = BigEndian.ReadFloat(data, off);
+        float py1 = BigEndian.ReadFloat(data, off + 4);
+        float pz1 = BigEndian.ReadFloat(data, off + 8);
         float weight1 = BigEndian.ReadFloat(data, off + 12);
+        v.PosX = px1; v.PosY = py1; v.PosZ = pz1;
 
         // Normal (short3 at offset 16)
         v.NormalX = BigEndian.ReadInt16(data, off + 16);
@@ -69,19 +70,25 @@ public static class VertexDecoder
         v.U = BigEndian.ReadInt16(data, off + 28) / 512f - 32f;
         v.V = 1f - (BigEndian.ReadInt16(data, off + 30) / 512f - 32f);
 
-        // Influence 2 position + weight (16 bytes at offset 44)
+        // Influence 2 position + weight (float4 at offset 44)
+        float px2 = BigEndian.ReadFloat(data, off + 44);
+        float py2 = BigEndian.ReadFloat(data, off + 48);
+        float pz2 = BigEndian.ReadFloat(data, off + 52);
         float weight2 = BigEndian.ReadFloat(data, off + 56);
         int boneIdx2 = data[off + 66] / 2;
 
-        // Influence 3 position + weight (16 bytes at offset 68)
+        // Influence 3 position + weight (float4 at offset 68)
+        float px3 = BigEndian.ReadFloat(data, off + 68);
+        float py3 = BigEndian.ReadFloat(data, off + 72);
+        float pz3 = BigEndian.ReadFloat(data, off + 76);
         float weight3 = BigEndian.ReadFloat(data, off + 80);
         int boneIdx3 = data[off + 90] / 2;
 
-        v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx1, Weight = weight1 });
+        v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx1, Weight = weight1, PosX = px1, PosY = py1, PosZ = pz1 });
         if (weight2 != 0f)
-            v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx2, Weight = weight2 });
+            v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx2, Weight = weight2, PosX = px2, PosY = py2, PosZ = pz2 });
         if (weight3 != 0f)
-            v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx3, Weight = weight3 });
+            v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx3, Weight = weight3, PosX = px3, PosY = py3, PosZ = pz3 });
 
         return v;
     }
@@ -109,7 +116,7 @@ public static class VertexDecoder
         // Bone index (byte at offset 18, or rigid sentinel)
         short sentinel = BigEndian.ReadInt16(data, off + 18);
         int boneIdx = sentinel == 0x7FFF ? 0 : data[off + 18] / 2;
-        v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx, Weight = 1f });
+        v.Influences.Add(new BoneInfluence { PaletteIndex = boneIdx, Weight = 1f, PosX = v.PosX, PosY = v.PosY, PosZ = v.PosZ });
 
         // UV (short2 at offset 24, convert: value/512 - 32)
         v.U = BigEndian.ReadInt16(data, off + 24) / 512f - 32f;

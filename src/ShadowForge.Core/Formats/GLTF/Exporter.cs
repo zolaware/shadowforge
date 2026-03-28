@@ -263,7 +263,8 @@ public static class Exporter
     }
 
     /// <summary>
-    /// Transforms vertices from bone-local space to world space using the primary bone influence.
+    /// Transforms vertices from bone-local space to world space, blending all
+    /// bone influences matching the Python parser's skinning formula.
     /// </summary>
     private static List<GltfVertex> TransformVertices(
         List<Vertex> vertices, List<ushort> palette, BoneGlobal[] boneGlobals)
@@ -271,27 +272,58 @@ public static class Exporter
         var result = new List<GltfVertex>(vertices.Count);
         foreach (var v in vertices)
         {
-            // Look up primary bone via palette
-            int paletteIdx = v.Influences.Count > 0 ? v.Influences[0].PaletteIndex : 0;
-            int boneIdx = paletteIdx < palette.Count ? palette[paletteIdx] : 0;
+            var worldPos = Vector3.Zero;
+            float totalWeight = 0f;
 
-            Vector3 worldPos;
-            Vector3 worldNormal;
-
-            if (boneIdx >= 0 && boneIdx < boneGlobals.Length && boneGlobals[boneIdx] != null)
+            foreach (var inf in v.Influences)
             {
-                var bg = boneGlobals[boneIdx];
-                var localPos = new Vector3(v.PosX, v.PosY, v.PosZ);
-                worldPos = Mat3Vec(bg.Matrix, localPos) + bg.Position;
+                int palIdx = inf.PaletteIndex;
+                int boneIdx = palIdx < palette.Count ? palette[palIdx] : 0;
+                if (boneIdx < 0 || boneIdx >= boneGlobals.Length || boneGlobals[boneIdx] == null)
+                    continue;
 
-                var localNorm = new Vector3(v.NormalX / 32767f, v.NormalY / 32767f, v.NormalZ / 32767f);
-                worldNormal = Vector3.Normalize(Mat3Vec(bg.Matrix, localNorm));
+                var bg = boneGlobals[boneIdx];
+                var localPos = new Vector3(inf.PosX, inf.PosY, inf.PosZ);
+                var transformed = Mat3Vec(bg.Matrix, localPos) + bg.Position;
+
+                float w = inf.Weight;
+                worldPos += w * transformed;
+                totalWeight += w;
+            }
+
+            // Give remaining weight to first influence (Python's blended_weight)
+            if (v.Influences.Count > 0 && totalWeight < 1f)
+            {
+                var inf0 = v.Influences[0];
+                int boneIdx0 = inf0.PaletteIndex < palette.Count ? palette[inf0.PaletteIndex] : 0;
+                if (boneIdx0 >= 0 && boneIdx0 < boneGlobals.Length && boneGlobals[boneIdx0] != null)
+                {
+                    var bg0 = boneGlobals[boneIdx0];
+                    var localPos0 = new Vector3(inf0.PosX, inf0.PosY, inf0.PosZ);
+                    var transformed0 = Mat3Vec(bg0.Matrix, localPos0) + bg0.Position;
+                    worldPos += (1f - totalWeight) * transformed0;
+                }
+            }
+
+            // Transform normal by primary bone's rotation
+            Vector3 worldNormal;
+            if (v.Influences.Count > 0)
+            {
+                int palIdx = v.Influences[0].PaletteIndex;
+                int boneIdx = palIdx < palette.Count ? palette[palIdx] : 0;
+                if (boneIdx >= 0 && boneIdx < boneGlobals.Length && boneGlobals[boneIdx] != null)
+                {
+                    var localNorm = new Vector3(v.NormalX / 32767f, v.NormalY / 32767f, v.NormalZ / 32767f);
+                    worldNormal = Vector3.Normalize(Mat3Vec(boneGlobals[boneIdx].Matrix, localNorm));
+                }
+                else
+                {
+                    worldNormal = Vector3.Normalize(new Vector3(v.NormalX / 32767f, v.NormalY / 32767f, v.NormalZ / 32767f));
+                }
             }
             else
             {
-                worldPos = new Vector3(v.PosX, v.PosY, v.PosZ);
-                worldNormal = Vector3.Normalize(new Vector3(
-                    v.NormalX / 32767f, v.NormalY / 32767f, v.NormalZ / 32767f));
+                worldNormal = Vector3.Normalize(new Vector3(v.NormalX / 32767f, v.NormalY / 32767f, v.NormalZ / 32767f));
             }
 
             if (float.IsNaN(worldNormal.X)) worldNormal = Vector3.UnitY;

@@ -87,6 +87,11 @@ public static class Reader
         // Sort bones by index so callers can rely on list order
         model.Bones.Sort((a, b) => a.Index.CompareTo(b.Index));
 
+        // Derive parent relationships from child pointers rather than the parent
+        // field. The parent pointer encodes a different relationship; the Python
+        // parser's get_armature() builds the hierarchy by following child pointers.
+        DeriveParentsFromChildren(model);
+
         BuildMeshGroups(model);
         return model;
     }
@@ -187,6 +192,117 @@ public static class Reader
         model.Bones.Add(bone);
     }
 
+    /// <summary>
+    /// Ports the Python parser's get_armature + get_parent to derive the correct
+    /// skeleton hierarchy. The child pointer gives first-child, the parent field
+    /// enables backtracking to find siblings. Each bone's ParentIndex is set to
+    /// the armature-derived parent (a_parent).
+    /// </summary>
+    private static void DeriveParentsFromChildren(ModelFile model)
+    {
+        var bones = model.Bones;
+        int n = bones.Count;
+        if (n == 0) return;
+
+        // Save original parent fields (needed for backtracking)
+        var origParent = new int[n];
+        for (int i = 0; i < n; i++)
+            origParent[i] = bones[i].ParentIndex;
+
+        // Port of Python's get_armature: builds rows by following child pointers
+        // forward and backtracking via the original parent field.
+        var armature = new List<List<int>>();
+        var remaining = new HashSet<int>(Enumerable.Range(0, n));
+        var remainingOrder = new List<int>(Enumerable.Range(0, n));
+
+        while (remaining.Count > 0)
+        {
+            int startIdx = remainingOrder.First(i => remaining.Contains(i));
+            var row = new List<int>();
+            int cur = startIdx;
+            bool done = false;
+
+            while (!done)
+            {
+                // get_row: follow child pointers, appending to existing row
+                int c = cur;
+                while (true)
+                {
+                    row.Add(c);
+                    int child = (c >= 0 && c < n) ? bones[c].ChildIndex : -1;
+                    if (child < 0 || child >= n)
+                        break;
+                    c = child;
+                }
+
+                // Save a snapshot of the current row
+                armature.Add(new List<int>(row));
+                foreach (int idx in row)
+                    remaining.Remove(idx);
+
+                // Backtrack using original parent field
+                int leaf = c;
+                int leafParent = (leaf >= 0 && leaf < n) ? origParent[leaf] : -1;
+
+                if (leafParent >= 0 && leafParent < n)
+                {
+                    int pp = origParent[row[^1]];
+                    cur = pp;
+                    row.RemoveAt(row.Count - 1);
+                }
+                else if (row.Count > 1)
+                {
+                    bool foundParent = false;
+                    bool reachedMin = false;
+                    while (!foundParent)
+                    {
+                        row.RemoveAt(row.Count - 1);
+                        int backBone = row[^1];
+                        int bp = (backBone >= 0 && backBone < n) ? origParent[backBone] : -1;
+                        if (bp >= 0 && bp < n)
+                        {
+                            row.RemoveAt(row.Count - 1);
+                            cur = bp;
+                            foundParent = true;
+                        }
+                        else if (row.Count <= 1)
+                        {
+                            reachedMin = true;
+                            foundParent = true;
+                        }
+                    }
+                    done = reachedMin;
+                }
+                else
+                {
+                    done = true;
+                }
+            }
+        }
+
+        // Derive a_parent: for each bone, find the FIRST armature row containing
+        // it and set parent to the bone before it in that row.
+        var aParent = new int[n];
+        Array.Fill(aParent, -1);
+        var assigned = new bool[n];
+
+        foreach (var row in armature)
+        {
+            for (int i = 0; i < row.Count; i++)
+            {
+                int boneIdx = row[i];
+                if (boneIdx >= 0 && boneIdx < n && !assigned[boneIdx])
+                {
+                    aParent[boneIdx] = i > 0 ? row[i - 1] : -1;
+                    assigned[boneIdx] = true;
+                }
+            }
+        }
+
+        for (int i = 0; i < n; i++)
+            bones[i].ParentIndex = aParent[i];
+    }
+
     private static void ParseTextures(ModelFile model, byte[] data, int pos, int dataLength)
     {
         int count = dataLength / TextureEntrySize;
@@ -219,6 +335,11 @@ public static class Reader
 
     private static void ReadIndexArrayData(ModelFile model, byte[] data, int iaStart)
     {
+        // The IA data region starts with a 16-byte section header:
+        // [byte_size:u32, index_count:u32, zeros:u64]
+        // Skip past it to reach the actual index data.
+        int iaDataStart = iaStart + 16;
+
         // IA data read is driven by render commands that specify size/start
         foreach (var cmd in model.RenderCommands)
         {
@@ -235,7 +356,7 @@ public static class Reader
                 Type = cmd.Opcode,
             };
 
-            int byteOff = iaStart + iaStartOff * 2;
+            int byteOff = iaDataStart + iaStartOff * 2;
             ia.Indices = new ushort[iaSize];
             for (int k = 0; k < iaSize && byteOff + 2 <= data.Length; k++)
             {
