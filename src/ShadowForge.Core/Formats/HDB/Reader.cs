@@ -94,6 +94,36 @@ public static class Reader
         // Sort bones by index so callers can rely on list order
         model.Bones.Sort((a, b) => a.Index.CompareTo(b.Index));
 
+        // Insert dummy bones if an expected index is missing (matches Python's safe array generation)
+        if (model.Bones.Count > 0)
+        {
+            int maxIndex = model.Bones[^1].Index;
+            for (int i = 0; i < maxIndex; i++)
+            {
+                if (model.Bones[i].Index != i)
+                {
+                    model.Bones.Insert(i, new Bone
+                    {
+                        Index = i,
+                        HFlag = 0,
+                        PosX = 0f,
+                        PosY = 0f,
+                        PosZ = 0f,
+                        EulerX = 0f,
+                        EulerY = 0f,
+                        EulerZ = 0f,
+                        ScaleX = 0f,
+                        ScaleY = 0f,
+                        ScaleZ = 0f, // Python zeroes these out for dummies
+                        ChildIndex = -1,
+                        ParentIndex = -1,
+                        Name = "Dummy",
+                        ExtraEuler = new float[6]
+                    });
+                }
+            }
+        }
+
         // Derive parent relationships from child pointers rather than the parent
         // field. The parent pointer encodes a different relationship; the Python
         // parser's get_armature() builds the hierarchy by following child pointers.
@@ -283,106 +313,131 @@ public static class Reader
     private static void DeriveParentsFromChildren(ModelFile model)
     {
         var bones = model.Bones;
-        int n = bones.Count;
-        if (n == 0) return;
+        if (bones.Count == 0) return;
 
-        // Save original parent fields (needed for backtracking)
-        var origParent = new int[n];
-        for (int i = 0; i < n; i++)
-            origParent[i] = bones[i].ParentIndex;
+        // Create a dictionary to safely look up bones by their Absolute Index
+        var boneMap = bones.ToDictionary(b => b.Index);
 
-        // Port of Python's get_armature: builds rows by following child pointers
-        // forward and backtracking via the original parent field.
         var armature = new List<List<int>>();
-        var remaining = new HashSet<int>(Enumerable.Range(0, n));
-        var remainingOrder = new List<int>(Enumerable.Range(0, n));
+        var remainingBones = bones.ToList();
+        int rowIndex = 1;
 
-        while (remaining.Count > 0)
+        while (remainingBones.Count > 0)
         {
-            int startIdx = remainingOrder.First(i => remaining.Contains(i));
-            var row = new List<int>();
-            int cur = startIdx;
+            var currentBone = remainingBones[0];
+            var currentRow = new List<int>();
             bool done = false;
 
             while (!done)
             {
-                // get_row: follow child pointers, appending to existing row
-                int c = cur;
-                while (true)
+                // get_row equivalent
+                bool doneRow = false;
+                while (!doneRow)
                 {
-                    row.Add(c);
-                    int child = (c >= 0 && c < n) ? bones[c].ChildIndex : -1;
-                    if (child < 0 || child >= n)
-                        break;
-                    c = child;
-                }
+                    rowIndex++;
+                    currentRow.Add(currentBone.Index);
 
-                // Save a snapshot of the current row
-                armature.Add(new List<int>(row));
-                foreach (int idx in row)
-                    remaining.Remove(idx);
-
-                // Backtrack using original parent field
-                int leaf = c;
-                int leafParent = (leaf >= 0 && leaf < n) ? origParent[leaf] : -1;
-
-                if (leafParent >= 0 && leafParent < n)
-                {
-                    int pp = origParent[row[^1]];
-                    cur = pp;
-                    row.RemoveAt(row.Count - 1);
-                }
-                else if (row.Count > 1)
-                {
-                    bool foundParent = false;
-                    bool reachedMin = false;
-                    while (!foundParent)
+                    if (currentBone.ChildIndex == -1)
                     {
-                        row.RemoveAt(row.Count - 1);
-                        int backBone = row[^1];
-                        int bp = (backBone >= 0 && backBone < n) ? origParent[backBone] : -1;
-                        if (bp >= 0 && bp < n)
-                        {
-                            row.RemoveAt(row.Count - 1);
-                            cur = bp;
-                            foundParent = true;
-                        }
-                        else if (row.Count <= 1)
-                        {
-                            reachedMin = true;
-                            foundParent = true;
-                        }
+                        doneRow = true;
                     }
-                    done = reachedMin;
+                    else
+                    {
+                        if (boneMap.TryGetValue(currentBone.ChildIndex, out var childBone))
+                            currentBone = childBone;
+                        else
+                            doneRow = true; // Fallback for broken pointers
+                    }
+                }
+
+                armature.Add(new List<int>(currentRow));
+
+                // Remove bones in the current row from remaining bones
+                remainingBones.RemoveAll(b => currentRow.Contains(b.Index));
+
+                if (currentBone.ParentIndex != -1)
+                {
+                    if (boneMap.TryGetValue(currentRow[^1], out var lastRowBone) &&
+                        lastRowBone.ParentIndex != -1 &&
+                        boneMap.TryGetValue(lastRowBone.ParentIndex, out var parentBone))
+                    {
+                        currentBone = parentBone;
+                        currentRow.RemoveAt(currentRow.Count - 1);
+                    }
+                    else
+                    {
+                        // Fallback if lookup fails
+                        currentRow.RemoveAt(currentRow.Count - 1);
+                    }
                 }
                 else
                 {
-                    done = true;
+                    if (currentRow.Count > 1)
+                    {
+                        bool foundValidParent = false;
+                        bool reachedMinimum = false;
+
+                        while (!foundValidParent)
+                        {
+                            currentRow.RemoveAt(currentRow.Count - 1);
+                            if (!boneMap.TryGetValue(currentRow[^1], out currentBone))
+                                break;
+
+                            if (currentBone.ParentIndex != -1)
+                            {
+                                currentRow.RemoveAt(currentRow.Count - 1);
+                                if (boneMap.TryGetValue(currentBone.ParentIndex, out var parentBone))
+                                {
+                                    currentBone = parentBone;
+                                    foundValidParent = true;
+                                }
+                            }
+                            else if (currentRow.Count == 1)
+                            {
+                                reachedMinimum = true;
+                                foundValidParent = true;
+                            }
+                        }
+
+                        if (reachedMinimum)
+                        {
+                            done = true;
+                        }
+                    }
+                    else
+                    {
+                        remainingBones.RemoveAll(b => currentRow.Contains(b.Index));
+                        if (rowIndex < bones.Count)
+                        {
+                            done = true;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
                 }
             }
         }
+
         Logger.Debug($"Armature: {string.Join(", ", armature.Select(a => "[" + string.Join(",", a) + "]"))}");
-        // Derive a_parent: for each bone, find the FIRST armature row containing
-        // it and set parent to the bone before it in that row.
-        var aParent = new int[n];
-        Array.Fill(aParent, -1);
-        var assigned = new bool[n];
 
-        foreach (var row in armature)
+        // Derive ParentIndex: for each bone, find the FIRST armature row containing it
+        // and set parent to the bone before it in that row.
+        foreach (var bone in bones)
         {
-            for (int i = 0; i < row.Count; i++)
+            int derivedParent = -1;
+            foreach (var row in armature)
             {
-                int boneIdx = row[i];
-                if (boneIdx >= 0 && boneIdx < n && !assigned[boneIdx])
+                int idx = row.IndexOf(bone.Index);
+                if (idx != -1)
                 {
-                    aParent[boneIdx] = i > 0 ? row[i - 1] : -1;
-                    assigned[boneIdx] = true;
+                    derivedParent = idx > 0 ? row[idx - 1] : -1;
+                    break;
                 }
             }
+            bone.ParentIndex = derivedParent;
         }
-
-        for (int i = 0; i < n; i++)
-            bones[i].ParentIndex = aParent[i];
     }
 
     private static void ParseTextures(ModelFile model, byte[] data, int pos, int dataLength)
