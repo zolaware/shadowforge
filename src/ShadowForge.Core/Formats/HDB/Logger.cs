@@ -6,8 +6,7 @@ namespace ShadowForge.Formats.HDB;
 
 public static class Logger
 {
-    // Set to false to silence debug logs when you are done fixing it
-    public static bool IsDebugEnabled { get; set; } = true;
+    public static bool IsDebugEnabled { get; set; } = false;
 
     public static void Debug(string message)
     {

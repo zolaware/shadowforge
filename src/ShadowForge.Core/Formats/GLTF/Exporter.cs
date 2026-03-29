@@ -37,7 +37,7 @@ public static class Exporter
     public static void Export(ModelFile model, string outputPath)
     {
         var scene = new SceneBuilder();
-        Logger.Debug($"Check 1 (Inizio Export): Bones={model.Bones.Count}, MeshGroups={model.MeshGroups.Count}, VertexArrays={model.VertexArrays.Count}");
+        Logger.Debug($"Check 1 (Export Start): Bones={model.Bones.Count}, MeshGroups={model.MeshGroups.Count}, VertexArrays={model.VertexArrays.Count}");
         // Compute global bone transforms (needed to transform vertices from bone-local to world space)
         var boneGlobals = ComputeBoneGlobals(model.Bones);
 
@@ -232,19 +232,16 @@ public static class Exporter
         foreach (var vaGroup in groupsByVa)
         {
             int vaIdx = vaGroup.Key;
-            Logger.Debug($"Check 2 (Inizio vaGroup): vaIdx={vaIdx}. È valido? {vaIdx >= 0 && vaIdx < model.VertexArrays.Count}");
+            Logger.Debug($"Check 2 (vaGroup Start): vaIdx={vaIdx}. Is valid? {vaIdx >= 0 && vaIdx < model.VertexArrays.Count}");
             if (vaIdx < 0 || vaIdx >= model.VertexArrays.Count) continue;
 
             var va = model.VertexArrays[vaIdx];
-            // 1. Controlliamo cosa stiamo per passare al decoder
             int rawLength = va.RawVertices != null ? va.RawVertices.Length : -1;
-            Logger.Debug($"Check 3A (Input Decoder): vaIdx={vaIdx}, VertexCount attesi={va.VertexCount}, VaType=0x{va.VaType:X2}, Byte RawVertices={rawLength}");
+            Logger.Debug($"Check 3A (Input Decoder): vaIdx={vaIdx}, Expected VertexCount={va.VertexCount}, VaType=0x{va.VaType:X2}, RawVertices Bytes={rawLength}");
 
-            // 2. Chiamata al decoder originale
             var rawVertices = VertexDecoder.Decode(va.RawVertices, va.VaType, va.VertexCount);
 
-            // 3. Risultato
-            Logger.Debug($"Check 3B (Output Decoder): Per vaIdx={vaIdx}, Vertici decodificati={rawVertices.Count}");
+            Logger.Debug($"Check 3B (Output Decoder): For vaIdx={vaIdx}, Decoded vertices={rawVertices.Count}");
 
             if (rawVertices.Count == 0) continue;
 
@@ -254,7 +251,7 @@ public static class Exporter
             {
                 if (group.IaIndex < 0 || group.IaIndex >= model.IndexArrays.Count) continue;
                 var ia = model.IndexArrays[group.IaIndex];
-                Logger.Debug($"Check 4 (Elaborazione Gruppo): iaIndex={group.IaIndex}, Numero Indici={ia.Indices.Length}, Topologia=0x{group.Topology:X2}");
+                Logger.Debug($"Check 4 (Processing Group): iaIndex={group.IaIndex}, Index Count={ia.Indices.Length}, Topology=0x{group.Topology:X2}");
 
                 // Transform vertices from bone-local to world space using this group's bone palette
                 var worldVertices = TransformVertices(rawVertices, group.BonePalette, boneGlobals);
@@ -359,7 +356,7 @@ public static class Exporter
         {
             if (indices[i] >= vertices.Count || indices[i + 1] >= vertices.Count || indices[i + 2] >= vertices.Count)
             {
-                Logger.Debug($"Check 5A (Scarto TriangleList): Indici fuori limite! i={i}, v.Count={vertices.Count}, idx0={indices[i]}, idx1={indices[i + 1]}, idx2={indices[i + 2]}");
+                Logger.Debug($"Check 5A (Discarding TriangleList): Indices out of bounds! i={i}, v.Count={vertices.Count}, idx0={indices[i]}, idx1={indices[i + 1]}, idx2={indices[i + 2]}");
                 continue;
             }
             prim.AddTriangle(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]);
@@ -396,7 +393,7 @@ public static class Exporter
             if (vi0 == vi1 || vi1 == vi2 || vi0 == vi2) continue;
             if (vi0 >= vertices.Count || vi1 >= vertices.Count || vi2 >= vertices.Count)
             {
-                Logger.Debug($"Check 5B (Scarto Strip): Indici fuori limite! v.Count={vertices.Count}, vi0={vi0}, vi1={vi1}, vi2={vi2}");
+                Logger.Debug($"Check 5B (Discarding Strip): Indices out of bounds! v.Count={vertices.Count}, vi0={vi0}, vi1={vi1}, vi2={vi2}");
                 continue;
             }
 
