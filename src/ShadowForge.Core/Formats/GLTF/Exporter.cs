@@ -266,7 +266,7 @@ public static class Exporter
                 bool isStrip = group.Topology == 0x10 || group.Topology == 0x20 || group.Topology == 0x30;
 
                 if (isStrip)
-                    AddTriangleStrip(prim, worldVertices, ia.Indices);
+                    AddTriangleStrip(prim, worldVertices, ia.Indices, group.Topology); // <-- Add Topology
                 else
                     AddTriangleList(prim, worldVertices, ia.Indices);
             }
@@ -366,24 +366,26 @@ public static class Exporter
         }
     }
 
-    private static void AddTriangleStrip(IPrimitiveBuilder prim, List<GltfVertex> vertices, ushort[] indices)
+    private static void AddTriangleStrip(IPrimitiveBuilder prim, List<GltfVertex> vertices, ushort[] indices, int topology)
     {
         int stripStart = 0;
         for (int i = 0; i <= indices.Length; i++)
         {
             if (i == indices.Length || indices[i] == 0xFFFF)
             {
-                EmitStrip(prim, vertices, indices, stripStart, i);
+                EmitStrip(prim, vertices, indices, stripStart, i, topology);
                 stripStart = i + 1;
             }
         }
     }
 
     private static void EmitStrip(IPrimitiveBuilder prim, List<GltfVertex> vertices,
-        ushort[] indices, int start, int end)
+        ushort[] indices, int start, int end, int topology)
     {
         int count = end - start;
         if (count < 3) return;
+
+        bool startReversed = topology == 0x10;
 
         for (int i = 0; i < count - 2; i++)
         {
@@ -394,12 +396,15 @@ public static class Exporter
             if (vi0 == vi1 || vi1 == vi2 || vi0 == vi2) continue;
             if (vi0 >= vertices.Count || vi1 >= vertices.Count || vi2 >= vertices.Count)
             {
-                // INCOLLA QUI:
                 Logger.Debug($"Check 5B (Scarto Strip): Indici fuori limite! v.Count={vertices.Count}, vi0={vi0}, vi1={vi1}, vi2={vi2}");
                 continue;
             }
 
-            if (i % 2 == 0)
+            // Calculate the winding direction based on the topology's starting state
+            bool defaultWinding = (i % 2 == 0);
+            bool useDefaultWinding = startReversed ? !defaultWinding : defaultWinding;
+
+            if (useDefaultWinding)
                 prim.AddTriangle(vertices[vi0], vertices[vi1], vertices[vi2]);
             else
                 prim.AddTriangle(vertices[vi1], vertices[vi0], vertices[vi2]);
