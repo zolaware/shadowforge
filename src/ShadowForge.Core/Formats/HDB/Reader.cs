@@ -75,9 +75,15 @@ public static class Reader
             if (model.SecondTable.Entries.Length > 0)
             {
                 int lastEntry = model.SecondTable.Entries[^1];
+
+                // Restore the + 16 to exactly match Python: IA_start = ST_end - 4 + ST_entries[-1] + 16
                 int iaStart = stEnd - 4 + lastEntry + 16;
                 Logger.Debug($"-- Second Table End: {stEnd}");
-                iaStart = (iaStart + 15) & ~15; // 16-byte align
+
+                // Match Python's behavior: Round DOWN (truncate) to the nearest 16-byte boundary.
+                // This replaces the (iaStart + 15) & ~15 which rounded UP.
+                iaStart = (iaStart / 16) * 16;
+
                 Logger.Debug($"-- IA Start: {iaStart}");
 
                 // Traverse the IA data and return the dynamically calculated true VA start
