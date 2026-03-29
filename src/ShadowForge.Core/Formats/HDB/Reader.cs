@@ -421,9 +421,9 @@ public static class Reader
             cur += 12;
         }
 
-        // Reverse only the VA arrays within this chunk, then append to the global list
-        chunkVas.Reverse();
-        model.VertexArrays.AddRange(chunkVas);
+        // Fix: Do NOT reverse the chunk internally. Insert it at the beginning 
+        // to perfectly match the prepend order of the Render Commands.
+        model.VertexArrays.InsertRange(0, chunkVas);
     }
 
     private static int ReadIndexArrayData(ModelFile model, byte[] data, int iaStart)
@@ -567,25 +567,47 @@ public static class Reader
         bool vaCheck = false;
         bool mpCheck = false;
 
+        // Variables to handle local -> global VA mapping across chunks
+        int globalVaOffset = 0;
+        int maxVaInChunk = -1;
+
         foreach (var cmd in model.RenderCommands)
         {
             switch (cmd.Opcode)
             {
+                case 0x00: // End or zero padding
+                    // 0xFF marks the end of a render commands chunk
+                    if (cmd.Data != null && cmd.Data.Length > 0 && cmd.Data[0] == 0xFF)
+                    {
+                        if (maxVaInChunk >= 0)
+                        {
+                            // Advance the global offset by the amount of VAs in the chunk we just finished
+                            globalVaOffset += (maxVaInChunk + 1);
+                            maxVaInChunk = -1;
+                        }
+                    }
+                    break;
+
                 case 0x40: // VA Select
                     if (cmd.Data.Length >= 3)
+                    {
                         currentVa = BigEndian.ReadUInt16(cmd.Data, 1);
+                        // Track the highest local VA index used in this chunk
+                        if (currentVa > maxVaInChunk)
+                            maxVaInChunk = currentVa;
+                    }
 
                     vaCheck = true;
                     mpCheck = false;
                     break;
+
                 case 0x60: // Material Select
                     if (cmd.Data.Length >= 1)
                         currentMaterial = cmd.Data[0];
                     break;
+
                 case 0x02: // Matrix Palette
                     mpCheck = true;
-
-                    // Log the pre-calculated palette to match Python
                     Logger.Debug($"% VA Num {mpIndex}");
                     Logger.Debug($"Current Palette: [{string.Join(", ", model.MatrixPalettes[mpIndex])}]");
                     mpIndex++;
@@ -596,7 +618,6 @@ public static class Reader
                 case 0x30: // IA Select
                     if (vaCheck != mpCheck)
                     {
-                        // Log the fallback to fix the missing VAs in the debug log
                         Logger.Debug("Empty MP detected in IA Selection, defaulting to previous.");
                         Logger.Debug($"% VA Num {mpIndex}");
                         Logger.Debug($"Current Palette: [{string.Join(", ", model.MatrixPalettes[mpIndex])}]");
@@ -611,11 +632,11 @@ public static class Reader
                         model.IndexArrays[iaIndex].MaterialIndex = currentMaterial;
                         model.MeshGroups.Add(new MeshGroup
                         {
-                            VaIndex = currentVa,
+                            // Fix: Combine the chunk's global offset with the file's local VA index
+                            VaIndex = globalVaOffset + currentVa,
                             IaIndex = iaIndex,
                             MaterialIndex = currentMaterial,
                             Topology = cmd.Opcode,
-                            // Use the pre-calculated palette from the main list
                             BonePalette = new List<ushort>(model.MatrixPalettes[mpIndex - 1])
                         });
                         iaIndex++;
