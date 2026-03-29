@@ -255,13 +255,16 @@ public static class Exporter
                 if (group.IaIndex < 0 || group.IaIndex >= model.IndexArrays.Count) continue;
                 var ia = model.IndexArrays[group.IaIndex];
                 Logger.Debug($"Check 4 (Elaborazione Gruppo): iaIndex={group.IaIndex}, Numero Indici={ia.Indices.Length}, Topologia=0x{group.Topology:X2}");
+
                 // Transform vertices from bone-local to world space using this group's bone palette
                 var worldVertices = TransformVertices(rawVertices, group.BonePalette, boneGlobals);
 
                 int matIdx = Math.Clamp(group.MaterialIndex, 0, materials.Length - 1);
                 var prim = mesh.UsePrimitive(materials[matIdx]);
 
-                bool isStrip = group.Topology == 0x20 || group.Topology == 0x30;
+                // FIX: Include 0x10 as a Triangle Strip topology!
+                bool isStrip = group.Topology == 0x10 || group.Topology == 0x20 || group.Topology == 0x30;
+
                 if (isStrip)
                     AddTriangleStrip(prim, worldVertices, ia.Indices);
                 else
