@@ -12,8 +12,17 @@ namespace ShadowForge.Formats.BDSL;
 /// </summary>
 internal static class EntryText
 {
-    public static bool IsHeader(string line) =>
-        Enum.GetValues<EntryType>().Any(type => line.StartsWith(TextHelper.EntryTypeName(type) + " "));
+    /// <summary>
+    /// Whether the line opens an entry: a named entry type, or entry_N for any other type.
+    /// </summary>
+    public static bool IsHeader(string line)
+    {
+        int space = line.IndexOf(' ');
+        if (space <= 0) return false;
+        string keyword = line[..space];
+        return Enum.GetValues<EntryType>().Any(type => TextHelper.EntryTypeName(type) == keyword)
+            || (keyword.StartsWith("entry_", StringComparison.Ordinal) && TextHelper.TryParseInteger(keyword.AsSpan(6), out _));
+    }
 
     /// <summary>
     /// Reads the block whose header is at line i and returns the index of the line after it.
@@ -27,7 +36,7 @@ internal static class EntryText
         foreach (var token in tokens.Skip(2))
         {
             if (token.StartsWith("id="))
-                entry.Id = TextHelper.ParseUInt(token[3..]);
+                entry.Id = TextHelper.ParseInteger(token[3..]);
         }
 
         i++;
@@ -64,7 +73,7 @@ internal static class EntryText
                 entry.Facing = TextHelper.ParseFloat(value);
                 break;
             case "ref_id":
-                entry.RefId = TextHelper.ParseUInt(value);
+                entry.RefId = TextHelper.ParseInteger(value);
                 break;
             case "extents":
             case "route":
@@ -104,13 +113,13 @@ internal static class EntryText
                 entry.TriggerRadius = TextHelper.ParseFloat(value);
                 break;
             case "@runtime_ref":
-                entry.RuntimeRef = TextHelper.ParseUInt(value);
+                entry.RuntimeRef = TextHelper.ParseInteger(value);
                 break;
         }
     }
 
     private static float TargetRef(string[] refs, int index) =>
-        refs.Length > index ? BitConverter.UInt32BitsToSingle(TextHelper.ParseUInt(refs[index])) : 0f;
+        refs.Length > index ? BitConverter.UInt32BitsToSingle(TextHelper.ParseInteger(refs[index])) : 0f;
 
     public static void Write(StringBuilder sb, SceneEntry entry)
     {

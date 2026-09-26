@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 using ShadowForge.Scene.Script;
 using ShadowForge.Scene.Script.Lift;
@@ -15,7 +14,7 @@ public static partial class StatementParser
         ["gold"] = (3, 0), ["playtime"] = (4, 0), ["realtime"] = (4, 1), ["medals"] = (5, 0), ["chapter"] = (6, 0),
     };
 
-    [GeneratedRegex(@"@(\d+)")]
+    [GeneratedRegex(@"@([+-]?(?:0[xX][0-9A-Fa-f]+|\d+))")]
     private static partial Regex LabelRef();
 
     private sealed class Cursor(IReadOnlyList<string> lines, int firstLine)
@@ -43,8 +42,9 @@ public static partial class StatementParser
         foreach (var line in lines)
             foreach (Match m in LabelRef().Matches(line))
             {
+                if (!TextHelper.TryParseInteger(m.Groups[1].ValueSpan, out uint id)) continue;
                 any = true;
-                max = Math.Max(max, uint.Parse(m.Groups[1].ValueSpan, CultureInfo.InvariantCulture));
+                max = Math.Max(max, id);
             }
         cursor.NextFreshLabel = any ? max + 1 : 0;
         return ParseBody(cursor, topLevel: true);
@@ -133,8 +133,8 @@ public static partial class StatementParser
             if (line.Length == 0) continue;
             if (line.StartsWith('@') && line.EndsWith(':'))
             {
-                try { id = uint.Parse(line.AsSpan(1, line.Length - 2), CultureInfo.InvariantCulture); }
-                catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException)
+                try { id = TextHelper.ParseInteger(line[1..^1]); }
+                catch (FormatException ex)
                 {
                     throw c.ErrorAt(look, ex.Message);
                 }
@@ -166,7 +166,7 @@ public static partial class StatementParser
             return FlatIf(c, body[3..].Trim(), disabled);
         if (body.StartsWith("flag[", StringComparison.Ordinal))
         {
-            var m = Regex.Match(body, @"^flag\[(\d+)\]\s*=\s*(\S+)$");
+            var m = Regex.Match(body, @"^flag\[([^\]]+)\]\s*=\s*(\S+)$");
             if (!m.Success) throw c.Error($"bad flag assignment '{body}'");
             return new FlagStmt([ParseUInt(c, m.Groups[1].Value), 0, ParseUInt(c, m.Groups[2].Value), 0, 0, 0], disabled);
         }
@@ -179,12 +179,12 @@ public static partial class StatementParser
 
     private static Statement Assignment(Cursor c, string body, bool disabled)
     {
-        var m = Regex.Match(body, @"^var\[(\d+)\]\s*(=|\+=|-=|\*=|/=)\s*(.+)$");
+        var m = Regex.Match(body, @"^var\[([^\]]+)\]\s*(=|\+=|-=|\*=|/=)\s*(.+)$");
         if (!m.Success) throw c.Error($"bad assignment '{body}'");
         uint dest = ParseUInt(c, m.Groups[1].Value);
         uint op = (uint)Array.IndexOf(StatementSyntax.AssignOps, m.Groups[2].Value);
         string value = m.Groups[3].Value.Trim();
-        var flag = Regex.Match(value, @"^flag\[(\d+)\]$");
+        var flag = Regex.Match(value, @"^flag\[([^\]]+)\]$");
         if (flag.Success)
         {
             if (op != 0) throw c.Error("flag reads only support '='");
@@ -339,6 +339,8 @@ public static partial class StatementParser
         int open = body.IndexOf('(');
         if (open <= 0 || !body.EndsWith(')')) throw c.Error($"cannot parse statement '{body}'");
         string name = body[..open].Trim();
+        if (name.StartsWith("op_", StringComparison.Ordinal) && TextHelper.TryParseInteger(name.AsSpan(3), out uint number))
+            name = $"op_{number}";
         if (!OpcodeTable.TryGetByName(name, out var spec)) throw c.Error($"unknown opcode '{name}'");
         var args = ParseArgs(c, spec, body[(open + 1)..^1]);
         return new CallStmt(spec.Opcode, args, disabled);

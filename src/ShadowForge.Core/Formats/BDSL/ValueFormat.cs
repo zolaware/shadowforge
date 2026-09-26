@@ -40,32 +40,30 @@ public static class ValueFormat
     }
 
     /// <summary>
-    /// Accepts every form Format writes. The kind only decides how a bare number is read.
+    /// Accepts every form Format writes, and any integer in the spellings
+    /// <see cref="TextHelper.ParseInteger"/> reads. The kind only decides how a bare
+    /// decimal is read: a float argument reads it as a float, anything else as an integer.
     /// </summary>
     public static uint Parse(string token, ArgSpec spec)
     {
         token = token.Trim();
-        if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            return uint.Parse(token.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         if (token.StartsWith("var[", StringComparison.Ordinal) && token.EndsWith(']'))
-            return uint.Parse(token.AsSpan(4, token.Length - 5), CultureInfo.InvariantCulture);
+            return TextHelper.ParseInteger(token[4..^1]);
         if (token.StartsWith('@'))
-            return uint.Parse(token.AsSpan(1), CultureInfo.InvariantCulture);
+            return TextHelper.ParseInteger(token[1..]);
         if (spec.EnumNames is not null)
             foreach (var pair in spec.EnumNames)
                 if (pair.Value == token) return pair.Key;
         foreach (var pair in OpcodeTable.CharNames)
             if (pair.Value == token) return pair.Key;
-        if (spec.Kind == ArgKind.Float)
+        if (spec.Kind == ArgKind.Float && !TextHelper.IsHexLiteral(token))
         {
             if (float.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out float f))
                 return BitConverter.SingleToUInt32Bits(f);
             throw new FormatException($"not a float: '{token}'");
         }
-        if (int.TryParse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int signed))
-            return unchecked((uint)signed);
-        if (uint.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out uint unsigned))
-            return unsigned;
+        if (TextHelper.TryParseInteger(token, out uint value))
+            return value;
         throw new FormatException($"not a value: '{token}'");
     }
 }

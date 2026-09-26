@@ -26,6 +26,6 @@ public static class CompareOp
     public static uint Parse(string text)
     {
         if (TryGetIndex(text, out uint op)) return op;
-        return TextHelper.ParseUInt(text.StartsWith("op_") ? text[3..] : text);
+        return TextHelper.ParseInteger(text.StartsWith("op_") ? text[3..] : text);
     }
 }

@@ -48,14 +48,14 @@ internal static class WaypointText
         int at = tokens.IndexOf("at");
 
         if (tokens.Count >= 2)
-            wp.Id = TextHelper.ParseUInt(tokens[1]);
+            wp.Id = TextHelper.ParseInteger(tokens[1]);
 
         for (int t = 2; t < (at >= 0 ? at : tokens.Count); t++)
         {
             if (tokens[t].StartsWith("type="))
             {
                 string type = tokens[t][5..];
-                wp.Type = (WaypointType)(Types.TryGetValue(type, out uint value) ? value : TextHelper.ParseUInt(type));
+                wp.Type = (WaypointType)(Types.TryGetValue(type, out uint value) ? value : TextHelper.ParseInteger(type));
             }
         }
 
@@ -91,7 +91,7 @@ internal static class WaypointText
             uint type = ParseConditionType(parts[1]);
             uint op = CompareOp.Parse(parts[3]);
             wp.ConditionFlags = (type & 0x0F) | ((op & 0x0F) << 4);
-            wp.ConditionValue = TextHelper.ParseUInt(parts[4]);
+            wp.ConditionValue = TextHelper.ParseInteger(parts[4]);
         }
         else if (line.StartsWith("ref = "))
         {
@@ -100,7 +100,7 @@ internal static class WaypointText
         else if (line.StartsWith("priority = ") || line.StartsWith("priority="))
         {
             TrySplitField(line, out _, out string value);
-            wp.Priority = TextHelper.ParseUInt(value);
+            wp.Priority = TextHelper.ParseInteger(value);
         }
         else if (line.StartsWith("targets = [") || line.StartsWith("targets=["))
         {
@@ -108,9 +108,9 @@ internal static class WaypointText
             int close = line.IndexOf(']');
             if (close <= open) return;
             var parts = line[(open + 1)..close].Split(',', StringSplitOptions.TrimEntries);
-            if (parts.Length > 0) wp.LinkCount = TextHelper.ParseUInt(parts[0]);
-            if (parts.Length > 1) wp.NextWaypoint = TextHelper.ParseUInt(parts[1]);
-            if (parts.Length > 2) wp.UnkField38 = TextHelper.ParseUInt(parts[2]);
+            if (parts.Length > 0) wp.LinkCount = TextHelper.ParseInteger(parts[0]);
+            if (parts.Length > 1) wp.NextWaypoint = TextHelper.ParseInteger(parts[1]);
+            if (parts.Length > 2) wp.UnkField38 = TextHelper.ParseInteger(parts[2]);
         }
         else if (line.StartsWith('@'))
         {
@@ -128,19 +128,19 @@ internal static class WaypointText
         switch (name)
         {
             case "@condition_value":
-                wp.ConditionValue = TextHelper.ParseUInt(value);
+                wp.ConditionValue = TextHelper.ParseInteger(value);
                 break;
             case "@unk_field_20":
-                wp.UnkField20 = TextHelper.ParseUInt(value);
+                wp.UnkField20 = TextHelper.ParseInteger(value);
                 break;
             case "@unk_field_24":
-                wp.UnkField24 = TextHelper.ParseUInt(value);
+                wp.UnkField24 = TextHelper.ParseInteger(value);
                 break;
             case "@unk_field_28":
-                wp.UnkField28 = TextHelper.ParseUInt(value);
+                wp.UnkField28 = TextHelper.ParseInteger(value);
                 break;
             case "@unk_field_2c":
-                wp.UnkField2C = TextHelper.ParseUInt(value);
+                wp.UnkField2C = TextHelper.ParseInteger(value);
                 break;
             case "@ref_data_extra":
                 var extra = HexToWords(value);
@@ -167,7 +167,7 @@ internal static class WaypointText
     private static uint ParseConditionType(string text)
     {
         if (ConditionTypes.TryGetValue(text, out uint type)) return type;
-        return TextHelper.ParseUInt(text.StartsWith("unk_") ? text[4..] : text);
+        return TextHelper.ParseInteger(text.StartsWith("unk_") ? text[4..] : text);
     }
 
     public static void Write(StringBuilder sb, Waypoint wp)

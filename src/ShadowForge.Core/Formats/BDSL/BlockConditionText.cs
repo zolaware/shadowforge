@@ -107,7 +107,7 @@ public static class BlockConditionText
 
     private static Condition ParseSlot(string part)
     {
-        var m = Regex.Match(part, @"^var\[(\d+)\]\s*(==|>=|<=|!=|>|<)\s*(\S+)$");
+        var m = Regex.Match(part, @"^var\[([^\]]+)\]\s*(==|>=|<=|!=|>|<)\s*(\S+)$");
         if (m.Success)
         {
             CompareOp.TryGetIndex(m.Groups[2].Value, out uint op);

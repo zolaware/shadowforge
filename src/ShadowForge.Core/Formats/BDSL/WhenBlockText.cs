@@ -125,7 +125,7 @@ internal static class WhenBlockText
                 block.BehaviorMode = (BehaviorMode)(int)Named(Behaviors, value);
                 break;
             case "@auto_run":
-                block.AutoRunFlags = TextHelper.ParseUInt(value);
+                block.AutoRunFlags = TextHelper.ParseInteger(value);
                 break;
             case "@encounter":
                 block.EncounterMode = Named(Encounters, value);
@@ -135,17 +135,17 @@ internal static class WhenBlockText
                 break;
             case "@auto_set_var":
                 block.AutoSetVarFlag = 1;
-                block.AutoSetVarIndex = TextHelper.ParseUInt(value);
+                block.AutoSetVarIndex = TextHelper.ParseInteger(value);
                 break;
             case "@auto_set_var_index":
-                block.AutoSetVarIndex = TextHelper.ParseUInt(value);
+                block.AutoSetVarIndex = TextHelper.ParseInteger(value);
                 break;
             case "@linked_entry":
-                block.LinkedEntryId = TextHelper.ParseUInt(value);
+                block.LinkedEntryId = TextHelper.ParseInteger(value);
                 break;
             case "@spawn_config":
             case "@spawn_flags":
-                block.SpawnFlags = TextHelper.ParseUInt(value);
+                block.SpawnFlags = TextHelper.ParseInteger(value);
                 break;
             case "@spawn_angle":
                 block.SpawnAngle = TextHelper.ParseFloat(value);
@@ -157,16 +157,16 @@ internal static class WhenBlockText
                 block.InteractionRadius = TextHelper.ParseFloat(value);
                 break;
             case "@type_data":
-                block.TypeData = TextHelper.ParseUInt(value);
+                block.TypeData = TextHelper.ParseInteger(value);
                 break;
             case "@spawn_mode":
-                block.SpawnMode = TextHelper.ParseUInt(value);
+                block.SpawnMode = TextHelper.ParseInteger(value);
                 break;
             case "@raw_header":
                 var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length < 2) break;
-                uint offset = TextHelper.ParseUInt(parts[0]);
-                uint raw = TextHelper.ParseUInt(parts[1]);
+                uint offset = TextHelper.ParseInteger(parts[0]);
+                uint raw = TextHelper.ParseInteger(parts[1]);
                 foreach (var word in RawHeaderWords)
                 {
                     if (word.Offset == offset)
@@ -177,7 +177,7 @@ internal static class WhenBlockText
     }
 
     private static uint Named(KeywordTable table, string text) =>
-        table.TryGetValue(text, out uint value) ? value : TextHelper.ParseUInt(text);
+        table.TryGetValue(text, out uint value) ? value : TextHelper.ParseInteger(text);
 
     public static void Write(StringBuilder sb, ScriptBlock block)
     {

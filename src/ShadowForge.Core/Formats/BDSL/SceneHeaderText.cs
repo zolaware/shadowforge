@@ -40,7 +40,7 @@ internal static class SceneHeaderText
                 scene.Filename = TextHelper.UnquoteString(value);
                 break;
             case "flags":
-                scene.Flags = TextHelper.ParseUInt(value);
+                scene.Flags = TextHelper.ParseInteger(value);
                 break;
             case "area":
                 scene.AreaType = TextHelper.ParseAreaType(value);
@@ -49,16 +49,16 @@ internal static class SceneHeaderText
                 scene.MessagePath = TextHelper.UnquoteString(value);
                 break;
             case "stage_id":
-                scene.StageId = TextHelper.ParseUInt(value);
+                scene.StageId = TextHelper.ParseInteger(value);
                 break;
             case "area_metadata":
-                scene.AreaMetadata = TextHelper.ParseUInt(value);
+                scene.AreaMetadata = TextHelper.ParseInteger(value);
                 break;
             case "build_path":
                 scene.BuildPath = TextHelper.UnquoteString(value);
                 break;
             case "scene_version":
-                scene.SceneVersion = TextHelper.ParseUInt(value);
+                scene.SceneVersion = TextHelper.ParseInteger(value);
                 break;
             case "area_origin":
                 var origin = ParseVector(value);
@@ -67,15 +67,15 @@ internal static class SceneHeaderText
                 scene.AreaOriginZ = origin.Z;
                 break;
             case "area_origin_w":
-                scene.AreaOriginW = TextHelper.ParseUInt(value);
+                scene.AreaOriginW = TextHelper.ParseInteger(value);
                 break;
             case "area_config":
                 var cfg = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (cfg.Length > 0) scene.AreaConfig0 = TextHelper.ParseUInt(cfg[0]);
-                if (cfg.Length > 1) scene.AreaConfig1 = TextHelper.ParseUInt(cfg[1]);
-                if (cfg.Length > 2) scene.AreaConfig2 = TextHelper.ParseUInt(cfg[2]);
-                if (cfg.Length > 3) scene.AreaConfig3 = TextHelper.ParseUInt(cfg[3]);
-                if (cfg.Length > 4) scene.AreaConfig4 = TextHelper.ParseUInt(cfg[4]);
+                if (cfg.Length > 0) scene.AreaConfig0 = TextHelper.ParseInteger(cfg[0]);
+                if (cfg.Length > 1) scene.AreaConfig1 = TextHelper.ParseInteger(cfg[1]);
+                if (cfg.Length > 2) scene.AreaConfig2 = TextHelper.ParseInteger(cfg[2]);
+                if (cfg.Length > 3) scene.AreaConfig3 = TextHelper.ParseInteger(cfg[3]);
+                if (cfg.Length > 4) scene.AreaConfig4 = TextHelper.ParseInteger(cfg[4]);
                 break;
         }
     }
