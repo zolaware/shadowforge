@@ -45,8 +45,8 @@ public static class Converter
     }
 
     /// <summary>
-    /// Writes a 2D texture to <paramref name="outputFilePath"/>. A volume instead writes up to
-    /// four "{name}_slice_NNN.png" files beside it, plus an alpha-free "_RGB" copy of slice 0.
+    /// Writes a 2D texture to <paramref name="outputFilePath"/>. A volume instead writes one
+    /// "{name}_slice_NNN.png" file per depth slice beside it, plus an alpha-free "_RGB" copy of slice 0.
     /// Returns the number of slices written.
     /// </summary>
     public static int ConvertAndSave(string inputFilePath, string outputFilePath, bool performGlobalSwap = true)
@@ -173,7 +173,7 @@ public static class Converter
         string baseName = Path.GetFileNameWithoutExtension(outputPath);
         int slicesSaved = 0;
 
-        for (int z = 0; z < Math.Min(4, depth); z++)
+        for (int z = 0; z < depth; z++)
         {
             int startByte = z * bytesPerSlice;
             if (startByte + bytesPerSlice > rgbaData.Length) break;

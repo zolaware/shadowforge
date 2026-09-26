@@ -24,13 +24,6 @@ public static class Header
     /// </summary>
     private const int FormatByte = FetchDword1 + 3;
 
-    /// <summary>
-    /// A volume texture's edge length is 128 * (this byte - 128).
-    /// </summary>
-    private const int VolumeEdgeByte = FetchDword0;
-
-    private const int VolumeDepthByte = FetchDword5 + 2;
-
     private static readonly Dictionary<GraphicFormat, int> FormatToXenos = new()
     {
         { GraphicFormat.TextureFormatL8,       2 },
@@ -170,8 +163,17 @@ public static class Header
     }
 
     /// <summary>
-    /// A volume texture's cubic edge length and slice count.
+    /// A volume texture's slice edge length and slice count, from fetch dword 2's 3D layout:
+    /// width - 1 in bits 0-10, height - 1 in bits 11-21, depth - 1 in bits 22-31.
     /// </summary>
     internal static (int edge, int depth) ReadVolumeSize(byte[] data)
-        => (128 * (data[VolumeEdgeByte] - 128), data[VolumeDepthByte]);
+    {
+        uint dword2 = BigEndian.ReadUInt32(data, FetchDword2);
+        int width = (int)(dword2 & 0x7FF) + 1;
+        int height = (int)((dword2 >> 11) & 0x7FF) + 1;
+        int depth = (int)(dword2 >> 22) + 1;
+        if (width != height)
+            throw new InvalidDataException($"Volume slices are {width}x{height}; only square slices are supported.");
+        return (width, depth);
+    }
 }

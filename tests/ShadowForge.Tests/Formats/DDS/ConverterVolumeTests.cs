@@ -5,7 +5,7 @@ using SixLabors.ImageSharp.PixelFormats;
 namespace ShadowForge.Tests.Formats.DDS;
 
 /// <summary>
-/// The pc05 fur volume (voltex_pc05_fur_01.36t) is a 256x256x4 DXT3 3D
+/// The pc05 fur volume (voltex_pc05_fur_01.36t) is a 256x256x8 DXT3 3D
 /// texture. Every depth slice must come back as its own decodable PNG.
 /// </summary>
 public sealed class ConverterVolumeTests
@@ -17,7 +17,7 @@ public sealed class ConverterVolumeTests
     {
         var slices = Converter.ConvertVolumeToPngSlices(File.ReadAllBytes(Fixture));
 
-        Assert.Equal(4, slices.Count);
+        Assert.Equal(8, slices.Count);
         foreach (var png in slices)
         {
             using var img = Image.Load<Rgba32>(png);
@@ -40,6 +40,6 @@ public sealed class ConverterVolumeTests
     public void VolumeSlices_DifferBetweenDepths()
     {
         var slices = Converter.ConvertVolumeToPngSlices(File.ReadAllBytes(Fixture));
-        Assert.NotEqual(slices[0], slices[3]);
+        Assert.NotEqual(slices[0], slices[7]);
     }
 }

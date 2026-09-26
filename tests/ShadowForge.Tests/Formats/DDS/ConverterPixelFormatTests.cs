@@ -1,4 +1,5 @@
 using ShadowForge.Formats.DDS;
+using ShadowForge.IO;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -6,12 +7,13 @@ namespace ShadowForge.Tests.Formats.DDS;
 
 /// <summary>
 /// Uncompressed formats decode to RGBA PNGs, in 2D and as volume slices. Volumes reuse the
-/// pc05 fur header with its format byte rewritten, since no retail volume uses these formats.
+/// pc05 fur header with its format and depth rewritten, since no retail volume uses these formats.
 /// </summary>
 public sealed class ConverterPixelFormatTests : IDisposable
 {
     private const string VolumeFixture = "testdata/textures/voltex_pc05_fur_01.36t";
     private const int FormatByte = 0x27;
+    private const int FetchDword2 = 0x28;
 
     private readonly string _dir = Directory.CreateTempSubdirectory("sf-dds-").FullName;
 
@@ -110,6 +112,7 @@ public sealed class ConverterPixelFormatTests : IDisposable
         int dataSize = edge * edge * depth * format.BytesPerUnit();
         Array.Resize(ref reference, Header.HeaderSize + dataSize);
         reference[FormatByte] = formatByte;
+        BigEndian.WriteUInt32(reference, FetchDword2, (uint)(edge - 1) | ((uint)(edge - 1) << 11) | ((uint)(depth - 1) << 22));
         string refPath = Path.Combine(_dir, "ref.36t");
         File.WriteAllBytes(refPath, reference);
 

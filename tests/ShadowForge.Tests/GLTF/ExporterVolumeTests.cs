@@ -102,7 +102,7 @@ public sealed class ExporterVolumeTests
             var fur = gltf.LogicalMaterials.Single(m => m.Name == FurName);
             var extras = Assert.IsType<JsonObject>(fur.Extras);
             Assert.Equal(FurName + ".36t", (string?)extras["sfVolumeTexture"]);
-            Assert.Equal(4, (int?)extras["sfVolumeDepth"]);
+            Assert.Equal(8, (int?)extras["sfVolumeDepth"]);
         }
         finally { Directory.Delete(dir, true); }
     }
