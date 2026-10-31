@@ -157,6 +157,19 @@ def export_entity(exe, entity_id, workdir, *, game_root=None, fmt="glb",
                         cwd=workdir, timeout=timeout, _run=_run)
 
 
+def export_textures_args(entity_id, outdir, *, game_root=None):
+    return build_args(["dds", "export"], [entity_id],
+                      {"-o": outdir, "--game-root": game_root}, json_flag=False)
+
+
+def export_textures(exe, entity_id, outdir, *, game_root=None, timeout=None,
+                    _run=_default_run) -> str:
+    """Writes every texture of an entity to outdir as <texture name>.png."""
+    cp = run(exe, export_textures_args(entity_id, outdir, game_root=game_root),
+             timeout=timeout, _run=_run)
+    return text_result(cp.returncode, cp.stdout, cp.stderr)
+
+
 def deploy_entity_args(entity_id, workdir, mod_name, *, enable=False, author=None,
                        game_root=None):
     opts = {"--from": workdir, "--mod": mod_name, "--enable": enable,

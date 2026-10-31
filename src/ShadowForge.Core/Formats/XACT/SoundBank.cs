@@ -69,6 +69,9 @@ public sealed class SoundBank
     public const int ClipWaveIndexOffset = 0x09;
     public const int ClipWaveBankIndexOffset = 0x0B;
 
+    /// <summary>A u16 wave index followed by a u8 wave bank index, in sounds and clips alike.</summary>
+    public const int WaveReferenceSize = 3;
+
     public string Name { get; set; } = "";
 
     /// <summary>Authoring tool version, 40 in retail Blue Dragon banks.</summary>
@@ -176,6 +179,7 @@ public sealed class SoundBank
 
         if (!cue.IsComplex)
         {
+            cue.WaveReferenceOffset = (int)(soundOffset + SimpleSoundWaveIndexOffset);
             cue.WaveIndex = BigEndian.ReadUInt16(data, (int)(soundOffset + SimpleSoundWaveIndexOffset));
             cue.WaveBankIndex = data[soundOffset + SimpleSoundWaveBankIndexOffset];
             return;
@@ -189,6 +193,7 @@ public sealed class SoundBank
         if (clipOffset + (long)ClipWaveBankIndexOffset >= data.Length)
             throw new InvalidDataException($"{name}: cue {cue.Index} clip data is past the end of the file");
 
+        cue.WaveReferenceOffset = (int)(clipOffset + ClipWaveIndexOffset);
         cue.WaveIndex = BigEndian.ReadUInt16(data, (int)(clipOffset + ClipWaveIndexOffset));
         cue.WaveBankIndex = data[clipOffset + ClipWaveBankIndexOffset];
     }

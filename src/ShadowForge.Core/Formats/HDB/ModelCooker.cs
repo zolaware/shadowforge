@@ -84,8 +84,8 @@ public static class ModelCooker
     }
 
     /// <summary>
-    /// Pre-order walk of the first-child / next-sibling tree from the last bone in FT
-    /// order. Returns parent Index by bone Index, -1 for roots. Bones the walk does not
+    /// Pre-order walk of the first-child / next-sibling tree from its root bone.
+    /// Returns parent Index by bone Index, -1 for roots. Bones the walk does not
     /// reach are left out.
     /// </summary>
     private static Dictionary<int, int> DeriveParents(BoneLayout layout)
@@ -94,7 +94,7 @@ public static class ModelCooker
         if (layout.Bones.Count == 0) return result;
 
         var stack = new Stack<(int Ft, int ParentFt)>();
-        stack.Push((layout.Bones.Count - 1, -1));
+        stack.Push((FindRootFt(layout), -1));
         while (stack.Count > 0)
         {
             var (ft, parentFt) = stack.Pop();
@@ -107,6 +107,24 @@ public static class ModelCooker
                 stack.Push((bone.ChildFtPos, ft));
         }
         return result;
+    }
+
+    /// <summary>
+    /// FT position of the bone no other bone names as its child or next sibling. Retail
+    /// files store it last and importer output stores it first. Falls back to the last
+    /// bone when there is no single such bone.
+    /// </summary>
+    private static int FindRootFt(BoneLayout layout)
+    {
+        var referenced = new bool[layout.Bones.Count];
+        foreach (var bone in layout.Bones)
+        {
+            if (bone.ChildFtPos >= 0 && bone.ChildFtPos < referenced.Length) referenced[bone.ChildFtPos] = true;
+            if (bone.NextSiblingFtPos >= 0 && bone.NextSiblingFtPos < referenced.Length) referenced[bone.NextSiblingFtPos] = true;
+        }
+
+        var roots = Enumerable.Range(0, referenced.Length).Where(ft => !referenced[ft]).ToList();
+        return roots.Count == 1 ? roots[0] : layout.Bones.Count - 1;
     }
 
     private static void BakeTextures(RawModel raw, ModelFile model)

@@ -297,7 +297,11 @@ class SF_OT_import_asset(_ImportFromAsset, bpy.types.Operator):
                                     textures=props.include_textures)
 
     def _import(self, context, workdir, asset_id, result):
-        _, warnings = scene.import_entity(workdir, asset_id, result)
+        exe = None
+        if context.scene.sf.include_textures:
+            exe = bridge.resolve_exe(_prefs(context).sforge_path or None)
+        _, warnings = scene.import_entity(workdir, asset_id, result,
+                                          exe=exe, game_root=_game_root(context))
         return warnings
 
     def _report_import(self, result, imported):

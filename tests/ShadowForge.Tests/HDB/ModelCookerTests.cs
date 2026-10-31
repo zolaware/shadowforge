@@ -1,9 +1,35 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using ShadowForge.Formats.GLTF;
 using ShadowForge.Formats.HDB;
+using ShadowForge.Formats.HDB.Import;
+using ShadowForge.Tests.GameData;
 
 namespace ShadowForge.Tests.HDB;
 
 public sealed class ModelCookerTests
 {
+    /// <summary>
+    /// Importer output stores the root bone first where retail stores it last, so a model
+    /// that went through export and import must still bake with the shipped parent links.
+    /// </summary>
+    [SkippableFact]
+    public void Bake_ImporterOutput_KeepsEveryBonesParent()
+    {
+        byte[] shipped = RetailData.Read(@"chara\ply\pc04\pc04_obj.hdb");
+        var stock = ModelCooker.Bake(ModelReader.Read(shipped));
+        string dir = GameDataFixture.NewTempDir("sf_reimport_");
+        string glb = Path.Combine(dir, "pc04.glb"), hdb = Path.Combine(dir, "pc04_obj.hdb");
+
+        ModelExporter.Export(shipped, glb);
+        ModelImporter.Import(glb, hdb, NullLogger.Instance);
+        var reimported = ModelCooker.Bake(ModelReader.Read(File.ReadAllBytes(hdb)));
+
+        static Dictionary<string, string> ParentNames(ModelFile m) => m.Bones
+            .Where(b => b.Name != "Dummy")
+            .ToDictionary(b => b.Name, b => b.ParentIndex < 0 ? "" : m.Bones[b.ParentIndex].Name);
+        Assert.Equal(ParentNames(stock), ParentNames(reimported));
+    }
+
     [Fact]
     public void Bake_HeaderMagicIsHDB()
     {

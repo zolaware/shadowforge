@@ -100,4 +100,21 @@ public sealed class ArchiveReader
             output.Write(LZSSDecoder.Decompress(compressedData, (int)entry.OriginalSize));
         }
     }
+
+    /// <summary>
+    /// The archive table and every entry's decompressed bytes, in archive order.
+    /// </summary>
+    public static (Archive Archive, List<ArchiveWriter.InputEntry> Entries) ReadAllEntries(byte[] data)
+    {
+        using var stream = new MemoryStream(data, writable: false);
+        var archive = ReadArchive(stream);
+        var entries = new List<ArchiveWriter.InputEntry>(archive.Entries.Count);
+        foreach (var entry in archive.Entries)
+        {
+            using var output = new MemoryStream();
+            ExtractEntry(stream, entry, output, archive.UsesZlib);
+            entries.Add(new ArchiveWriter.InputEntry(entry.Name, output.ToArray()));
+        }
+        return (archive, entries);
+    }
 }

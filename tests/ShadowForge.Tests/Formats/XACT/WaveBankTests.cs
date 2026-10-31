@@ -236,7 +236,7 @@ public sealed class WaveBankTests
     /// data segment, 24-byte entry records, a seek table to preserve and no
     /// entry names.
     /// </summary>
-    private static byte[] BuildBank()
+    internal static byte[] BuildBank()
     {
         const int bankDataOffset = WaveBank.HeaderSize;
         const int metaOffset = bankDataOffset + WaveBank.BankDataSize;

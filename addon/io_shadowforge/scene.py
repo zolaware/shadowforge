@@ -55,9 +55,28 @@ def _new_names(collection, before):
     return [item for item in collection if item.name not in before]
 
 
-def import_entity(workdir, entity_id, result):
+def _load_eyelid_images(objs, entity_id, workdir, exe, game_root):
+    """Exports the entity's textures with sforge when a staged material names
+    an eyelid image the GLB does not carry, and loads the ones it names.
+    Returns warnings."""
+    names = materials.missing_stage2_images(objs)
+    if not names:
+        return []
+    texdir = os.path.join(workdir, "textures")
+    os.makedirs(texdir, exist_ok=True)
+    try:
+        bridge.export_textures(exe, entity_id, texdir, game_root=game_root)
+    except bridge.SforgeError as ex:
+        return ["eyelid textures not exported (%s); eyes drawn by the eyelid "
+                "layer will be missing" % ex]
+    missing = materials.load_images(names, texdir)
+    return ["eyelid image '%s' not found in the exported textures" % n for n in missing]
+
+
+def import_entity(workdir, entity_id, result, exe=None, game_root=None):
     """Imports an `entity export` result, tags the new objects, layers staged
-    eye materials and folds right-side bone rolls. Returns (manifest, warnings)."""
+    eye materials and folds right-side bone rolls. With exe, eyelid images the
+    GLB lacks are exported with sforge first. Returns (manifest, warnings)."""
     glb = _output_path(result.outputs, (".glb", ".gltf"),
                        os.path.join(workdir, entity_id + ".glb"))
     man_path = _output_path(result.outputs, (".sfmod.json",),
@@ -83,7 +102,10 @@ def import_entity(workdir, entity_id, result):
         obj["sf_rig_id"] = man.entity.rig_id
         obj["sf_workdir"] = workdir
         obj["sf_manifest_text"] = text_name
-    _, warnings = materials.layer_staged_materials(new_objs)
+    warnings = []
+    if exe is not None:
+        warnings.extend(_load_eyelid_images(new_objs, entity_id, workdir, exe, game_root))
+    warnings.extend(materials.layer_staged_materials(new_objs)[1])
     for obj in new_objs:
         if obj.type == 'ARMATURE':
             _, fold_warnings = rigfold.fold_armature(obj, new_actions)
@@ -168,7 +190,8 @@ def export_scene_glb(workdir, entity_id):
 def open_blocking(entity_id, workdir, exe, game_root=None, anims=True, textures=True):
     res = bridge.export_entity(exe, entity_id, workdir, game_root=game_root,
                                anims=anims, textures=textures)
-    man, warnings = import_entity(workdir, entity_id, res)
+    man, warnings = import_entity(workdir, entity_id, res,
+                                  exe=exe if textures else None, game_root=game_root)
     for w in warnings:
         print("ShadowForge WARNING:", w)
     return man

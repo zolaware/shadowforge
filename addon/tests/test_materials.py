@@ -33,6 +33,7 @@ class FakeNode:
         self.name = name
         self.image = None
         self.uv_map = ""
+        self.extension = 'REPEAT'
         self.location = (0.0, 0.0)
         self.label = ""
         if node_type == 'MIX':
@@ -320,6 +321,64 @@ def test_contract_layout_restores_on_exception(materials_module, mock_bpy):
         with materials_module.contract_layout_for_export():
             raise RuntimeError("export failed")
     assert base_color_source(mat) is mat.node_tree.nodes.get(materials_module.MIX_NODE)
+
+
+EYELID = "np114_eyelid_l_0"
+
+
+def test_layer_puts_eyelid_over_face_and_iris(materials_module, mock_bpy):
+    mat, obj = eye_object(mock_bpy, images=("np114_02", EYELID))
+
+    updated, warnings = materials_module.layer_staged_materials([obj])
+
+    assert updated == [mat.name]
+    assert warnings == []
+    nt = mat.node_tree
+    mix2 = nt.nodes.get(materials_module.STAGE2_MIX_NODE)
+    tex2 = nt.nodes.get(materials_module.STAGE2_TEX_NODE)
+    uv2 = nt.nodes.get(materials_module.STAGE2_UV_NODE)
+    assert base_color_source(mat) is mix2
+    assert tex2.image.name == EYELID
+    assert tex2.extension == 'CLIP'
+    assert uv2.uv_map == "UVMap.002"
+
+    below = link_into(nt, materials_module._socket(mix2.inputs, "A_Color"))
+    eyelid = link_into(nt, materials_module._socket(mix2.inputs, "B_Color"))
+    factor = link_into(nt, materials_module._socket(mix2.inputs, "Factor_Float"))
+    assert below.from_node is nt.nodes.get(materials_module.MIX_NODE)
+    assert eyelid.from_node is tex2
+    assert factor.from_node is tex2 and factor.from_socket.name == "Alpha"
+
+
+def test_layer_adds_the_eyelid_once_its_image_arrives(materials_module, mock_bpy):
+    mat, obj = eye_object(mock_bpy)
+    materials_module.layer_staged_materials([obj])
+    mock_bpy.data.images = FakeImages(("np114_02", EYELID))
+
+    updated, _ = materials_module.layer_staged_materials([obj])
+    again, _ = materials_module.layer_staged_materials([obj])
+
+    assert updated == [mat.name]
+    assert again == []
+    assert len([n for n in mat.node_tree.nodes if n.type == 'MIX']) == 2
+
+
+def test_contract_layout_exports_iris_and_restores_eyelid(materials_module, mock_bpy):
+    mat, obj = eye_object(mock_bpy, images=("np114_02", EYELID))
+    materials_module.layer_staged_materials([obj])
+    mock_bpy.data.materials = [mat]
+
+    with materials_module.contract_layout_for_export():
+        assert base_color_source(mat).image.name == mat.name
+    assert base_color_source(mat) is mat.node_tree.nodes.get(materials_module.STAGE2_MIX_NODE)
+
+
+def test_missing_stage2_images_lists_eyelids_not_in_the_blend(materials_module, mock_bpy):
+    _, obj = eye_object(mock_bpy)
+
+    assert materials_module.missing_stage2_images([obj]) == [EYELID]
+    mock_bpy.data.images = FakeImages(("np114_02", EYELID))
+    assert materials_module.missing_stage2_images([obj]) == []
 
 
 def test_contract_layout_noop_without_layered_materials(materials_module, mock_bpy):

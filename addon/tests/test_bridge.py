@@ -233,6 +233,18 @@ def test_job_text_mode_failure_sets_error():
     assert job.done and job.error is not None
 
 
+def test_export_textures_args_builds_dds_export_without_json():
+    args = bridge.export_textures_args("pc04", "C:/wk/textures", game_root="G:/game")
+    assert args == ["dds", "export", "pc04", "-o", "C:/wk/textures", "--game-root", "G:/game"]
+
+
+def test_export_textures_failure_raises():
+    def fake_run(cmd, cwd, timeout):
+        return _cp(returncode=1, stderr="no such entity")
+    with pytest.raises(bridge.SforgeError):
+        bridge.export_textures("sforge.exe", "pc99", "C:/wk", _run=fake_run)
+
+
 def test_deploy_entity_args_order_and_flags():
     args = bridge.deploy_entity_args("pc01", "C:/wk", "my-mod", enable=True,
                                      author="Tom", game_root="G:/game")

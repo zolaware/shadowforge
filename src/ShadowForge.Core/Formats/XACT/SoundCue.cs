@@ -15,6 +15,12 @@ public sealed class SoundCue
     public int WaveBankIndex { get; set; }
 
     /// <summary>
+    /// File offset of the wave index, which the wave bank index byte follows. These
+    /// <see cref="SoundBank.WaveReferenceSize"/> bytes pick the wave the cue plays.
+    /// </summary>
+    public int WaveReferenceOffset { get; set; }
+
+    /// <summary>
     /// True when the sound record carries clips instead of its own wave reference. Every
     /// Blue Dragon cue still resolves to one wave, taken from the first clip.
     /// </summary>
