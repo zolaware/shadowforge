@@ -15,6 +15,7 @@ from . import bridge
 from . import manifest as mf
 from . import materials
 from . import rigfold
+from . import tailtrim
 
 # Blender dedups datablock names with a ".001"-style suffix. sforge group
 # names contain no dots, so a trailing dot + 3 digits is always that suffix.
@@ -75,8 +76,9 @@ def _load_eyelid_images(objs, entity_id, workdir, exe, game_root):
 
 def import_entity(workdir, entity_id, result, exe=None, game_root=None):
     """Imports an `entity export` result, tags the new objects, layers staged
-    eye materials and folds right-side bone rolls. With exe, eyelid images the
-    GLB lacks are exported with sforge first. Returns (manifest, warnings)."""
+    eye materials, folds right-side bone rolls and trims overlong bone tails.
+    With exe, eyelid images the GLB lacks are exported with sforge first.
+    Returns (manifest, warnings)."""
     glb = _output_path(result.outputs, (".glb", ".gltf"),
                        os.path.join(workdir, entity_id + ".glb"))
     man_path = _output_path(result.outputs, (".sfmod.json",),
@@ -106,10 +108,13 @@ def import_entity(workdir, entity_id, result, exe=None, game_root=None):
     if exe is not None:
         warnings.extend(_load_eyelid_images(new_objs, entity_id, workdir, exe, game_root))
     warnings.extend(materials.layer_staged_materials(new_objs)[1])
+    size = tailtrim.model_size(new_objs)
     for obj in new_objs:
         if obj.type == 'ARMATURE':
             _, fold_warnings = rigfold.fold_armature(obj, new_actions)
             warnings.extend(fold_warnings)
+            tailtrim.move_pivots(obj, size)
+            tailtrim.trim_tails(obj, size)
     return man, warnings
 
 
@@ -178,9 +183,10 @@ def import_map(context, workdir, stage_id, result):
 
 def export_scene_glb(workdir, entity_id):
     """Exports the whole scene with staged materials in contract layout and
-    bone rolls in the game convention, restoring both afterwards."""
+    bone rolls and tails in the game convention, restoring them afterwards."""
     glb = os.path.join(workdir, entity_id + ".glb")
-    with materials.contract_layout_for_export(), rigfold.unfolded_for_export():
+    with materials.contract_layout_for_export(), tailtrim.full_tails_for_export(), \
+            rigfold.unfolded_for_export():
         bpy.ops.export_scene.gltf(filepath=glb, export_format="GLB",
                                   use_selection=False, export_yup=True,
                                   export_animations=True, export_extras=True)

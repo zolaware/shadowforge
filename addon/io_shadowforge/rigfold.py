@@ -100,24 +100,32 @@ def _rest_matrices(arm_obj, names):
     return {n: arm_obj.data.bones[n].matrix_local.copy() for n in names}
 
 
-def _edit_rolls(arm_obj, updates):
-    """Applies {bone: fn(current_roll) -> new_roll} to edit bone rolls in one
-    edit-mode round trip. Returns {bone: (roll_before, roll_after)}."""
+@contextmanager
+def edit_bones(arm_obj):
+    """Yields the armature's edit bones for one edit-mode round trip, then
+    restores the previous mode and active object."""
     view_layer = bpy.context.view_layer
     prev_active = view_layer.objects.active
     view_layer.objects.active = arm_obj
     prev_mode = arm_obj.mode
-    applied = {}
     bpy.ops.object.mode_set(mode='EDIT')
     try:
-        for name, fn in updates.items():
-            eb = arm_obj.data.edit_bones[name]
-            before = eb.roll
-            eb.roll = fn(before)
-            applied[name] = (before, eb.roll)
+        yield arm_obj.data.edit_bones
     finally:
         bpy.ops.object.mode_set(mode='OBJECT' if prev_mode == 'EDIT' else prev_mode)
         view_layer.objects.active = prev_active
+
+
+def _edit_rolls(arm_obj, updates):
+    """Applies {bone: fn(current_roll) -> new_roll} to edit bone rolls in one
+    edit-mode round trip. Returns {bone: (roll_before, roll_after)}."""
+    applied = {}
+    with edit_bones(arm_obj) as ebs:
+        for name, fn in updates.items():
+            eb = ebs[name]
+            before = eb.roll
+            eb.roll = fn(before)
+            applied[name] = (before, eb.roll)
     return applied
 
 
