@@ -9,10 +9,8 @@ layer_staged_materials() stacks the layers the way the game draws them: the
 stage-0 face (TEXCOORD_0), the iris over it by iris alpha, then the stage-2
 eyelid (TEXCOORD_2) over both by eyelid alpha. The eyelid is the bound blink
 frame, and on some characters (Marumaro) it is the layer that draws the eyes.
-A UV of -32 marks vertices a layer does not cover, such as Marumaro's nose and
-ear in his eyelid meshes, so the iris and eyelid alphas are sampled with CLIP
-addressing. The iris alpha comes from a second image node, so the iris node
-keeps the wrap mode it exports with. contract_layout_for_export() rewires back to contract layout
+It samples with CLIP addressing, because a UV of -32 marks vertices the eyelid
+does not cover. contract_layout_for_export() rewires back to contract layout
 around a scene export, because the GLTF exporter cannot trace baseColorTexture
 through a Mix node.
 """

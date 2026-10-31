@@ -78,7 +78,6 @@ def import_entity(workdir, entity_id, result, exe=None, game_root=None):
     """Imports an `entity export` result, tags the new objects, layers staged
     eye materials, folds right-side bone rolls and trims overlong bone tails.
     With exe, eyelid images the GLB lacks are exported with sforge first.
-    Returns (manifest, warnings)."""
     glb = _output_path(result.outputs, (".glb", ".gltf"),
                        os.path.join(workdir, entity_id + ".glb"))
     man_path = _output_path(result.outputs, (".sfmod.json",),
